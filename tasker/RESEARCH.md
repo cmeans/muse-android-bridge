@@ -23,15 +23,31 @@ intents (ntfy docs, "subscribe/phone"):
 3. **Tasker HTTP long-poll loop** on the topic's JSON endpoint. Rejected
    unless 1–2 fail: worst battery profile of the three.
 
-### Open specifics the A1 device test must answer
+### Extras — verified from the app source (2026-11-11)
 
-- Full extras list of `MESSAGE_RECEIVED` on the installed app version —
-  critically whether a **message ID** (dedup, PROTOCOL §2.3) and a
-  **timestamp** (TTL check) are included. If no timestamp extra exists, the
-  executor needs a fallback freshness check (e.g. reject when the intent
-  arrives >120 s after the executor's own subscribe poll, or query the
-  topic JSON once per command). Log every extra on the pilot phone.
-- Does the broadcast still fire when the topic is muted in the ntfy app?
+Read in `binwiederhier/ntfy-android`,
+`app/src/main/java/io/heckel/ntfy/msg/BroadcastService.kt` — the source
+states these constants "cannot be changed without breaking the contract."
+`MESSAGE_RECEIVED` carries, among others:
+
+| Extra | Use in this design |
+|---|---|
+| `id` | Dedup key (PROTOCOL §2.3) ✔ present |
+| `time` | Message timestamp, epoch seconds (Int) — TTL check ✔ present |
+| `topic` | Channel routing (owner vs family topic) |
+| `message` | The command body |
+| `title`, `tags`, `priority` | Available; registry matching ignores them |
+| `muted` / `muted_str` | The broadcast itself reports whether the topic is muted — strong sign it fires for muted topics too; device test confirms |
+
+So both protocol mechanisms (dedup + 120 s TTL) are implementable in the
+Tasker executor with no fallback freshness hack. In Tasker these arrive as
+the Intent Received event's extras (e.g. `%id`, `%time`, `%topic`,
+`%message` — variable naming to be confirmed on the pilot phone).
+
+### Still open for the A1 device test
+
+- Confirm the broadcast fires with the topic muted, and log the actual
+  Tasker variable names for the extras above.
 - Delivery path on this self-hosted server: the Play app uses FCM only for
   ntfy.sh itself; for this server it relies on its own persistent
   connection plus the server's `upstream-base-url` wake-up. Measure
