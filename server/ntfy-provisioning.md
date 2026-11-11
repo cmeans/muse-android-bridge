@@ -56,3 +56,13 @@ on their bridge topics first (instant stop), then revoke their tokens /
 remove the user at leisure. Test-plan F1 is satisfied for the ACL
 mechanism; it will be re-run with the real family credentials during
 Phase 4 provisioning.
+
+## F2 phone-credential scope (2026-11-11, PASSED via the public path)
+
+Re-ran the phone credential's scope checks through the public front door
+(https://ntfy.intfar.com via the CT 105 proxy — the exact path the phone
+will use), not just localhost: read owner topic → message received;
+publish to owner → 403; publish ack receipt → 200; read ack → 403.
+Combined with provisioning-day localhost checks (alert topic → 403) and
+the F1 drill, test-plan F2 is satisfied. F3 (rogue controller refused)
+awaits the Phase 3 RustDesk server.
