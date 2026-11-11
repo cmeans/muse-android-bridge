@@ -1,0 +1,19 @@
+# Secrets and credentials — never commit
+*.pem
+*.key
+*priv*
+secrets.*
+*token*
+*creds*
+.env
+*.kdbx
+
+# Build output
+*.apk
+*.aab
+build/
+.gradle/
+__pycache__/
+
+# Local provisioning state (real IPs, device IDs, whitelists live elsewhere)
+provisioning.local.*
