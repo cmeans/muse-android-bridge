@@ -37,3 +37,22 @@ token because grants attach to the user.
   executor) subscribes with the `chris-razr-phone` user against
   https://ntfy.intfar.com — password handed over at setup time, never
   written here.
+
+## F1 revocation drill (2026-11-11, PASSED)
+
+Throwaway publisher `drill-pub` (write-only on `mab-chris-razr-family`,
+own token), run entirely against the pilot topics:
+
+1. Publish with drill token → **200**.
+2. `ntfy access drill-pub mab-chris-razr-family deny` (the revocation move).
+3. Publish again with the **same, still-valid token** → **403**. ACL denial
+   is immediate and beats token validity — revoking a family member does
+   not require chasing their token.
+4. Cleanup: drill user removed entirely, token file deleted, user list
+   verified clean; publish attempt afterwards → **401**.
+
+Standing revocation procedure for a real family publisher: apply `deny`
+on their bridge topics first (instant stop), then revoke their tokens /
+remove the user at leisure. Test-plan F1 is satisfied for the ACL
+mechanism; it will be re-run with the real family credentials during
+Phase 4 provisioning.
