@@ -40,6 +40,14 @@ Two help paths share one phone deployment:
 
 ## Status
 
-Design phase (2026-11-11). Protocol and architecture drafted; test plan
-open; no code yet. Rollout: developer's phone → second family phone → first
-real user.
+Phase 1 in progress (2026-11-11). Design documents complete; the pilot
+device's ntfy principals are provisioned and verified on the self-hosted
+server, and security drills F1 (publisher revocation) and F2 (phone
+credential scope) have passed — see `server/ntfy-provisioning.md`.
+Next: Tasker executor on the pilot phone (test groups A and B).
+
+Remote: `cmeans/muse-android-bridge` (private). This VM cannot push over
+git SSH/HTTPS (egress resets SSH), so history is published as one
+API commit per local commit via the GitHub connector's `push-files`
+(snapshot per commit, same messages). Remote commit SHAs therefore
+differ from local ones; content and order match.
