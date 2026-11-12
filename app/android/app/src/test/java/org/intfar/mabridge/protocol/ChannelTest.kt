@@ -19,4 +19,18 @@ class ChannelTest {
             assertFalse(s, isValidSlug(s))
         }
     }
+
+    @Test fun acceptsHttpsServerWithHostOnly() {
+        for (s in listOf("https://ntfy.intfar.com", "https://ntfy.example.com:8443", "https://ntfy.intfar.com/")) {
+            assertTrue(s, isValidServer(s))
+        }
+    }
+
+    @Test fun rejectsServerThatReleaseBuildsCantReachOrThatBreaksTheUrl() {
+        // Release builds are HTTPS only; a path would be glued in front of the topic list.
+        for (s in listOf("", "http://ntfy.intfar.com", "ntfy.intfar.com", "https://", "https://ntfy.intfar.com/sub",
+            "https://ntfy intfar.com", "https://ntfy.intfar.com?x=1", "https://user@ntfy.intfar.com", "ftp://ntfy.intfar.com")) {
+            assertFalse(s, isValidServer(s))
+        }
+    }
 }

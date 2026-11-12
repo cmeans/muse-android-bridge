@@ -2,6 +2,8 @@ package org.intfar.mabridge
 
 import android.content.Context
 import android.content.SharedPreferences
+import org.intfar.mabridge.protocol.isValidServer
+import org.intfar.mabridge.protocol.isValidSlug
 
 /** The bridge's stored setup and STOP switches (the protocol constants live in `protocol/`). */
 object Config {
@@ -24,10 +26,10 @@ object Config {
     fun stopAll(ctx: Context) = prefs(ctx).getBoolean("stop_all", false)
     fun stopFamily(ctx: Context) = prefs(ctx).getBoolean("stop_family", false)
 
-    /** Setup fields still empty; the service doesn't start until this is empty. */
+    /** Setup fields still empty or invalid; the service doesn't start until this is empty. */
     fun missingSetup(ctx: Context): List<String> = buildList {
-        if (server(ctx).isBlank()) add("server")
-        if (deviceSlug(ctx).isBlank()) add("device slug")
+        if (!isValidServer(server(ctx))) add("server (https://host)")
+        if (!isValidSlug(deviceSlug(ctx))) add("device slug")
         if (username(ctx).isBlank()) add("username")
         if (!CredentialStore(ctx).isSet()) add("password")
     }

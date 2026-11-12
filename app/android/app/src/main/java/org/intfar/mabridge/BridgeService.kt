@@ -70,7 +70,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         gate = Gate(
             slug = Config.deviceSlug(this),
             registry = PILOT_REGISTRY,
-            seen = FileSeenStore(File(filesDir, "seen_ids.txt")) { log("dedup file write failed: ${it.javaClass.simpleName}") },
+            seen = FileSeenStore(File(filesDir, "seen_ids.txt")) { log("dedup file read or write failed: ${it.javaClass.simpleName}") },
             clockMs = System::currentTimeMillis,
             stop = ::stopState,
         )
@@ -249,7 +249,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                     log("ok ($name): ${command.text}")
                 } else {
                     ack(Receipts.failed(command))
-                    log("failed ($name): ${command.text}: no alarm or ringtone sound")
+                    log("failed ($name): ${command.text}: no sound played")
                 }
             }
             Command.StatusReport -> {
@@ -290,11 +290,16 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     /**
      * Rings at full alarm volume, looping, for 30 s or until Stop ringing, STOP all,
      * or (for a family ring) STOP family. False if the phone has no sound to play.
-     * Each ring has a generation number, so a superseded ring always stops.
+     * A `ring find` while one is ringing keeps the current ring and its end time,
+     * so a publisher repeating the command can't keep the phone ringing.
+     * True only once a sound is actually playing.
      */
     @Synchronized
     private fun startRing(channel: Channel): Boolean {
-        stopRinging("superseded by a new ring")
+        if (ringtone != null) {
+            log("ring find: already ringing; the current ring keeps its end time")
+            return true
+        }
         val rt = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
             ?: RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
             ?: return false
@@ -318,6 +323,13 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         } catch (e: Exception) {
             stopRinging("error")
             throw e
+        }
+        // `ok ring find` only once a sound is really playing (PROTOCOL §6).
+        val deadline = SystemClock.elapsedRealtime() + PLAY_CHECK_MS
+        while (!rt.isPlaying && SystemClock.elapsedRealtime() < deadline) Thread.sleep(50)
+        if (!rt.isPlaying) {
+            stopRinging("no sound started")
+            return false
         }
         return true
     }
@@ -364,7 +376,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         savedAlarmVolume?.let { v ->
             try {
                 (getSystemService(AUDIO_SERVICE) as AudioManager).setStreamVolume(AudioManager.STREAM_ALARM, v, 0)
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                Log.w("MABridge", "couldn't restore the alarm volume", e)
+                log("ring: couldn't restore the alarm volume to $v: ${e.javaClass.simpleName}")
+            }
         }
         savedAlarmVolume = null
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(RING_NOTIFICATION)
@@ -402,7 +417,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         synchronized(logLock) {
             try {
                 File(filesDir, LOG_FILE).appendText("$ts | $text\n")
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                Log.w("MABridge", "couldn't append to $LOG_FILE", e)
+            }
         }
     }
 
@@ -433,6 +450,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         private const val STATUS_NOTIFICATION = 1
         private const val RING_NOTIFICATION = 2
         private const val RING_MS = 30_000L
+        /** How long a ring may take to start playing before it counts as failed. */
+        private const val PLAY_CHECK_MS = 1_000L
         private const val PREF_LAST_ID = "last_message_id"
         private const val STREAM_READ_TIMEOUT_MS = 120_000
     }

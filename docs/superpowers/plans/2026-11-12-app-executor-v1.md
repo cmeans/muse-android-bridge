@@ -6,7 +6,7 @@
 
 **Architecture:** All protocol decisions live in plain Kotlin under `org.intfar.mabridge.protocol` (no Android imports), so JVM unit tests cover check order, expiry, duplicates, parsing and receipts. The Android layer (`BridgeService`, `MainActivity`, a Keystore credential store) only does I/O: one ntfy streaming connection, announcing, launching, ringing, logging, posting receipts.
 
-**Tech Stack:** Kotlin 2.2.10, Android Gradle plugin 8.13.2, Gradle 8.14.3 wrapper, compileSdk/targetSdk 36, minSdk 29, JUnit 4.13.2. No runtime dependencies beyond the Android platform.
+**Tech Stack:** Kotlin 2.2.10, Android Gradle plugin 8.13.2, Gradle 8.14.3 wrapper (as planned; the build now uses Gradle 8.14.7 and Kotlin 2.2.21, from #2), compileSdk/targetSdk 36, minSdk 29, JUnit 4.13.2. No runtime dependencies beyond the Android platform.
 
 **Spec:** `PROTOCOL.md` (v0.1 when written; this plan's Task 2 makes it v0.2; the contract), `TEST-PLAN.md` groups A and B, `app/DEV-HANDOFF.md`.
 

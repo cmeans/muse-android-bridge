@@ -20,6 +20,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.intfar.mabridge.protocol.isValidServer
 import org.intfar.mabridge.protocol.isValidSlug
 
 /**
@@ -92,13 +93,18 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "Save setup"
             setOnClickListener {
+                val serverText = server.text.toString().trim()
+                if (!isValidServer(serverText)) {
+                    setupResult.text = "Not saved: the server must be https:// and a host name, with nothing after it (like https://ntfy.example.com)."
+                    return@setOnClickListener
+                }
                 val slugText = slug.text.toString().trim()
                 if (!isValidSlug(slugText)) {
                     setupResult.text = "Not saved: the device slug must be lowercase letters, digits and single hyphens (like peggy-phone)."
                     return@setOnClickListener
                 }
                 prefs.edit()
-                    .putString("server", server.text.toString().trim())
+                    .putString("server", serverText)
                     .putString("slug", slugText)
                     .putString("username", user.text.toString().trim())
                     .apply()

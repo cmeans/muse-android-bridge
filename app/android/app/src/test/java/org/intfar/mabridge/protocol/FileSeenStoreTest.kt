@@ -1,6 +1,7 @@
 package org.intfar.mabridge.protocol
 
 import org.intfar.mabridge.FileSeenStore
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -46,6 +47,36 @@ class FileSeenStoreTest {
         } finally {
             dir.setWritable(true)
         }
+    }
+
+    @Test fun unreadableFileStartsEmptyInsteadOfThrowing() {
+        val f = tmp.newFolder("seen_ids.txt") // a directory where the file should be
+        var errors = 0
+        val s = FileSeenStore(f, onError = { errors++ })
+        assertTrue(s.markIfNew("a", t))
+        assertTrue(errors >= 1)
+    }
+
+    @Test fun newIdAppendsOneLineInsteadOfRewriting() {
+        val f = File(tmp.root, "seen_ids.txt")
+        val s = FileSeenStore(f)
+        for (i in 1..50) s.markIfNew("id$i", t + i)
+        assertEquals(50, f.readLines().size)
+        // Appending kept the earlier lines: id1 still dedups after a restart.
+        assertFalse(FileSeenStore(f).markIfNew("id1", t + 100))
+    }
+
+    @Test fun expiredEntriesAreCompactedAway() {
+        val f = File(tmp.root, "seen_ids.txt")
+        val s = FileSeenStore(f)
+        for (i in 1..50) s.markIfNew("old$i", t)
+        // A day later every old entry has expired; enough new ones trigger a compaction.
+        val later = t + DEDUP_WINDOW_MS + 1
+        for (i in 1..10) s.markIfNew("new$i", later + i)
+        val lines = f.readLines()
+        assertTrue("file still holds expired lines: ${lines.size}", lines.size <= 10)
+        assertFalse(FileSeenStore(f).markIfNew("new3", later + 100))
+        assertTrue(FileSeenStore(f).markIfNew("old3", later + 100))
     }
 
     @Test fun idWithSpaceOrNewlineCannotForgeEntries() {
