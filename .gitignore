@@ -7,6 +7,10 @@ secrets.*
 *creds*
 .env
 *.kdbx
+# Android signing keys and their passwords
+*.jks
+*.keystore
+keystore.properties
 
 # Build output
 *.apk
