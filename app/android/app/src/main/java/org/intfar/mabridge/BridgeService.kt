@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.os.BatteryManager
@@ -30,6 +31,7 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -49,7 +51,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     @Volatile private var conn: HttpURLConnection? = null
     private var tts: TextToSpeech? = null
     @Volatile private var ttsReady = false
-    @Volatile private var ringtone: Ringtone? = null
+    private var ringtone: Ringtone? = null
+    @Volatile private var ringGeneration = 0
+    private var savedAlarmVolume: Int? = null
     private lateinit var gate: Gate
     private lateinit var acks: ExecutorService
     private val logLock = Any()
@@ -63,7 +67,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         gate = Gate(
             slug = Config.deviceSlug(this),
             registry = PILOT_REGISTRY,
-            seen = FileSeenStore(File(filesDir, "seen_ids.txt")),
+            seen = FileSeenStore(File(filesDir, "seen_ids.txt")) { log("dedup file write failed: ${it.javaClass.simpleName}") },
             clockMs = System::currentTimeMillis,
             stop = { StopState(all = Config.stopAll(this), family = Config.stopFamily(this)) },
         )
@@ -78,6 +82,12 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         if (intent?.action == ACTION_STOP_RING) {
             stopRinging()
             return START_STICKY
+        }
+        val missing = Config.missingSetup(this)
+        if (missing.isNotEmpty()) {
+            log("not starting: setup incomplete (${missing.joinToString(", ")})")
+            stopSelf()
+            return START_NOT_STICKY
         }
         if (!running) {
             running = true
@@ -112,31 +122,42 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         val slug = Config.deviceSlug(this)
         val topics = "${Channel.OWNER.topic(slug)},${Channel.FAMILY.topic(slug)}"
         while (running) {
+            var c: HttpURLConnection? = null
             try {
-                val c = URL("${Config.server(this)}/$topics/json").openConnection() as HttpURLConnection
+                // Catch up from the last message seen, so a command sent during a
+                // reconnect gap still arrives; the gate drops anything stale (120 s)
+                // or already seen. With no message seen yet, look back 2 minutes.
+                val since = Config.prefs(this).getString(PREF_LAST_ID, null)
+                    ?.let { URLEncoder.encode(it, "UTF-8") } ?: "2m"
+                c = URL("${Config.server(this)}/$topics/json?since=$since").openConnection() as HttpURLConnection
                 conn = c
                 c.setRequestProperty("Authorization", basicAuth())
                 c.connectTimeout = 15_000
-                c.readTimeout = 0 // streaming
+                // ntfy sends a keepalive about every 45 s: a silent stream for this
+                // long is a dead (half-open) connection, so reconnect.
+                c.readTimeout = STREAM_READ_TIMEOUT_MS
                 val code = c.responseCode
                 if (code != 200) {
                     log("subscribe: HTTP $code")
-                    c.disconnect()
                 } else {
-                    backoff.reset()
                     Config.prefs(this).edit().putLong("last_connected", System.currentTimeMillis()).apply()
                     log("subscribed")
+                    var first = true
                     c.inputStream.bufferedReader().use { reader ->
                         while (running) {
                             val line = reader.readLine() ?: break
-                            if (line.isNotBlank()) handle(line)
+                            // Reset only once the stream delivers something, so a server
+                            // that answers 200 and closes at once still backs off.
+                            if (first) { backoff.reset(); first = false }
+                            if (running && line.isNotBlank()) handle(line)
                         }
                     }
-                    c.disconnect()
                     if (running) log("stream ended")
                 }
             } catch (e: Exception) {
                 if (running) log("subscribe error: ${e.javaClass.simpleName}")
+            } finally {
+                c?.disconnect()
             }
             if (running) {
                 try { Thread.sleep(backoff.nextDelayMs()) } catch (_: InterruptedException) { }
@@ -155,13 +176,28 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     private fun handle(line: String) {
         val msg = parseNtfyLine(line) ?: return // keepalive, open, or not a usable message
+        Config.prefs(this).edit().putString(PREF_LAST_ID, msg.id).apply()
         when (val d = gate.decide(msg)) {
             is Decision.Ignore -> log(d.log)
             is Decision.DropDuplicate -> log(d.log)
             is Decision.DropStale -> { log(d.log); ack(d.receipt) }
             is Decision.Reject -> { log(d.log); ack(d.receipt) }
-            is Decision.Run -> run(d.command, d.channel)
+            is Decision.Run -> try {
+                run(d.command, d.channel)
+            } catch (e: Exception) {
+                // One failed action mustn't drop the subscription; it isn't retried (§5).
+                ack(Receipts.failed(d.command))
+                log("failed (${d.channel.name.lowercase()}): ${d.command.text}: ${e.javaClass.simpleName}")
+            }
         }
+    }
+
+    /** False when the announcement banner can't show (notifications off for the app or its channel). */
+    private fun canAnnounce(): Boolean {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        ensureAnnounceChannel(nm)
+        val ch = nm.getNotificationChannel(CH_ANNOUNCE)
+        return nm.areNotificationsEnabled() && ch != null && ch.importance != NotificationManager.IMPORTANCE_NONE
     }
 
     private fun run(command: Command, channel: Channel) {
@@ -176,6 +212,11 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                     log("not-installed ($name): ${command.text}")
                     return
                 }
+                if (!canAnnounce()) {
+                    ack(Receipts.cannotAnnounce(command))
+                    log("cannot-announce ($name): ${command.text}: notifications are off")
+                    return
+                }
                 if (!Settings.canDrawOverlays(this)) {
                     // Android blocks activity starts from the background without it.
                     log("warning: 'Display over other apps' is off; the launch may be blocked")
@@ -187,10 +228,19 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 log("ok ($name): ${command.text}")
             }
             Command.RingFind -> {
+                if (!canAnnounce()) {
+                    ack(Receipts.cannotAnnounce(command))
+                    log("cannot-announce ($name): ${command.text}: notifications are off")
+                    return
+                }
                 announce("Ringing so you can find the phone: asked by $who")
-                ring()
-                ack(Receipts.ok(command))
-                log("ok ($name): ${command.text}")
+                if (startRing(channel)) {
+                    ack(Receipts.ok(command))
+                    log("ok ($name): ${command.text}")
+                } else {
+                    ack(Receipts.failed(command))
+                    log("failed ($name): ${command.text}: no alarm or ringtone sound")
+                }
             }
             Command.StatusReport -> {
                 val bm = getSystemService(BATTERY_SERVICE) as BatteryManager
@@ -212,9 +262,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     private fun announce(text: String) {
         if (ttsReady) tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "mab")
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(
-            NotificationChannel(CH_ANNOUNCE, "Bridge announcements", NotificationManager.IMPORTANCE_HIGH)
-        )
+        ensureAnnounceChannel(nm)
         val n = Notification.Builder(this, CH_ANNOUNCE)
             .setContentTitle("Muse Bridge")
             .setContentText(text)
@@ -224,45 +272,79 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         nm.notify((System.currentTimeMillis() % 100_000).toInt() + 10, n)
     }
 
-    private fun ring() {
-        stopRinging()
-        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+    private fun ensureAnnounceChannel(nm: NotificationManager) {
         nm.createNotificationChannel(
             NotificationChannel(CH_ANNOUNCE, "Bridge announcements", NotificationManager.IMPORTANCE_HIGH)
         )
+    }
+
+    /**
+     * Rings at full alarm volume, looping, for 30 s or until Stop ringing, STOP all,
+     * or (for a family ring) STOP family. False if the phone has no sound to play.
+     * Each ring has a generation number, so a superseded ring always stops.
+     */
+    @Synchronized
+    private fun startRing(channel: Channel): Boolean {
+        stopRinging()
+        val rt = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+            ?: RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
+            ?: return false
+        rt.audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        rt.isLooping = true
+        val am = getSystemService(AUDIO_SERVICE) as AudioManager
+        try {
+            savedAlarmVolume = am.getStreamVolume(AudioManager.STREAM_ALARM)
+            am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0)
+        } catch (e: Exception) {
+            savedAlarmVolume = null
+            log("ring: couldn't raise the alarm volume: ${e.javaClass.simpleName}")
+        }
+        rt.play()
+        ringtone = rt
+        val gen = ++ringGeneration
+
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        ensureAnnounceChannel(nm)
         val stopIntent = PendingIntent.getService(
             this, 1, Intent(this, BridgeService::class.java).setAction(ACTION_STOP_RING),
             PendingIntent.FLAG_IMMUTABLE,
         )
-        val n = Notification.Builder(this, CH_ANNOUNCE)
-            .setContentTitle("Muse Bridge is ringing")
-            .setContentText("Tap Stop ringing to silence it")
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .addAction(Notification.Action.Builder(null, "Stop ringing", stopIntent).build())
-            .setOngoing(true)
-            .build()
-        nm.notify(RING_NOTIFICATION, n)
+        nm.notify(
+            RING_NOTIFICATION,
+            Notification.Builder(this, CH_ANNOUNCE)
+                .setContentTitle("Muse Bridge is ringing")
+                .setContentText("Tap Stop ringing to silence it")
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .addAction(Notification.Action.Builder(null, "Stop ringing", stopIntent).build())
+                .setOngoing(true)
+                .build(),
+        )
         thread(name = "mab-ring") {
-            val rt = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
-                ?: RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
-                ?: return@thread
-            rt.audioAttributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-            ringtone = rt
-            rt.play()
             val until = System.currentTimeMillis() + RING_MS
-            while (ringtone === rt && System.currentTimeMillis() < until && !Config.stopAll(this)) {
+            while (ringGeneration == gen && System.currentTimeMillis() < until &&
+                !Config.stopAll(this) && !(channel == Channel.FAMILY && Config.stopFamily(this))
+            ) {
                 try { Thread.sleep(250) } catch (_: InterruptedException) { break }
             }
-            if (ringtone === rt) stopRinging()
+            synchronized(this) { if (ringGeneration == gen) stopRinging() }
         }
+        return true
     }
 
+    @Synchronized
     private fun stopRinging() {
+        ringGeneration++
         ringtone?.stop()
         ringtone = null
+        savedAlarmVolume?.let { v ->
+            try {
+                (getSystemService(AUDIO_SERVICE) as AudioManager).setStreamVolume(AudioManager.STREAM_ALARM, v, 0)
+            } catch (_: Exception) { }
+        }
+        savedAlarmVolume = null
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(RING_NOTIFICATION)
     }
 
@@ -327,5 +409,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         private const val STATUS_NOTIFICATION = 1
         private const val RING_NOTIFICATION = 2
         private const val RING_MS = 30_000L
+        private const val PREF_LAST_ID = "last_message_id"
+        private const val STREAM_READ_TIMEOUT_MS = 120_000
     }
 }

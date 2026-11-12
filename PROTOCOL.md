@@ -2,8 +2,10 @@
 
 **Version:** 0.2 (DRAFT, 2026-11-12). 0.2 records the packages verified on the
 pilot phone (§4.3), fixes the receipt list (§6), and states that a channel
-disabled by STOP still marks a message as seen (§5). Approved by Chris,
-2026-11-12. 0.1: 2026-11-11.
+disabled by STOP still marks a message as seen (§5); Chris approved those on
+2026-11-12. The `cannot-announce` and `failed` receipts (§6) and the
+cache catch-up note (§2.3) came from review on the same day and await his
+review on the PR. 0.1: 2026-11-11.
 **Status:** Phase 0 deliverable. This document is the contract. The Tasker pilot
 and the native app are interchangeable executors of this protocol; neither may
 extend it unilaterally.
@@ -65,6 +67,10 @@ bug, not a feature.
   window (at-least-once delivery plus redelivery on reconnect).
 - Publishers MUST NOT rely on store-and-forward. If the phone is offline, the
   correct outcome is that the command expires, not that it fires later.
+- An executor MAY catch up from the server cache on reconnect (ntfy's
+  `since=`), so a command sent during a short reconnect gap still arrives;
+  the TTL and dedup above make that safe, and every cached message older
+  than 120 s is dropped as stale.
 
 ## 3. Authentication and authorization
 
@@ -127,7 +133,7 @@ Package names are verified against the actual phone at provisioning and
 recorded in the executor config. The registry may differ per phone; the
 *command vocabulary* may not.
 
-## 5. Executor behaviour
+## 5. Executor behavior
 
 On receiving a message, an executor MUST:
 
@@ -161,6 +167,8 @@ ok <command>                       e.g. ok launch meet
 err <command> not-installed        launch only; nothing is announced
 err <command> disabled             channel off by STOP (§7)
 err <command> not-implemented      bootstrap rustdesk / update rustdesk until Phase 3
+err <command> cannot-announce      the phone can't show the announcement (§5.4), so nothing was done
+err <command> failed               the action couldn't run (e.g. no sound to ring); not retried
 err unknown-command                never echoes the body
 dropped-stale <command>            stale and a registry command on its channel
 dropped-stale                      stale and not a registry command
@@ -220,5 +228,5 @@ report it in `status report` receipts.
 3. Does `status report` belong in the pilot, or is it app-phase scope?
 4. ~~Exact Muse app package name and Meet package name on the pilot phone.~~
    Resolved 2026-11-12 (§4.3).
-5. Ack-topic behaviour while the phone is on a VPN (pilot phone runs a
+5. Ack-topic behavior while the phone is on a VPN (pilot phone runs a
    consumer VPN almost daily) — verify publish and subscribe both survive it.

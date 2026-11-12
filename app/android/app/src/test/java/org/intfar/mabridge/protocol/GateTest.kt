@@ -51,6 +51,17 @@ class GateTest {
         assertEquals("dropped-stale", d.receipt)
     }
 
+    @Test fun extremeTimestampIsStale() {
+        assertTrue(gate.decide(msg("launch meet", timeSec = nowSec + Long.MIN_VALUE)) is Decision.DropStale)
+        assertTrue(gate.decide(msg("launch meet", timeSec = Long.MAX_VALUE)) is Decision.DropStale)
+    }
+
+    @Test fun duplicateAtWindowEdgeStillDropped() {
+        assertTrue(gate.decide(msg("launch meet", id = "edge")) is Decision.Run)
+        clock = t + day
+        assertTrue(gate.decide(msg("launch meet", id = "edge", timeSec = clock / 1000)) is Decision.DropDuplicate)
+    }
+
     @Test fun duplicateDropped() {
         assertTrue(gate.decide(msg("launch meet", id = "same")) is Decision.Run)
         assertTrue(gate.decide(msg("launch meet", id = "same")) is Decision.DropDuplicate)
@@ -113,6 +124,11 @@ class GateTest {
             gate.decide(msg("bootstrap rustdesk", topic = owner)),
         )
         assertEquals("err bootstrap rustdesk not-implemented", Receipts.notImplemented(Command.BootstrapRustdesk))
+    }
+
+    @Test fun failureReceipts() {
+        assertEquals("err ring find failed", Receipts.failed(Command.RingFind))
+        assertEquals("err launch meet cannot-announce", Receipts.cannotAnnounce(Command.Launch("meet")))
     }
 
     @Test fun receiptWording() {

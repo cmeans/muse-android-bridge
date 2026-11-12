@@ -7,6 +7,10 @@ object Receipts {
     fun disabled(c: Command) = "err ${c.text} disabled"
     fun notImplemented(c: Command) = "err ${c.text} not-implemented"
     fun unknown() = "err unknown-command"
+    /** The action threw or couldn't run (e.g. no sound to ring); nothing is retried. */
+    fun failed(c: Command) = "err ${c.text} failed"
+    /** The phone can't show the announcement, so nothing was done (PROTOCOL §1: no silent operation). */
+    fun cannotAnnounce(c: Command) = "err ${c.text} cannot-announce"
 
     /** Names the command only when [body] is one on [channel]; never echoes other text. */
     fun staleOf(body: String, channel: Channel, registry: Registry): String =

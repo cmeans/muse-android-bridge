@@ -8,7 +8,7 @@
 
 **Tech Stack:** Kotlin 2.2.10, Android Gradle plugin 8.13.2, Gradle 8.14.3 wrapper, compileSdk/targetSdk 36, minSdk 29, JUnit 4.13.2. No runtime dependencies beyond the Android platform.
 
-**Spec:** `PROTOCOL.md` (v0.1, the contract), `TEST-PLAN.md` groups A and B, `app/DEV-HANDOFF.md`.
+**Spec:** `PROTOCOL.md` (v0.1 when written; this plan's Task 2 makes it v0.2; the contract), `TEST-PLAN.md` groups A and B, `app/DEV-HANDOFF.md`.
 
 ## Decisions (Chris approved all three recommendations, 2026-11-12 11:28 CT)
 

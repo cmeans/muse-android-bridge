@@ -1,7 +1,5 @@
 package org.intfar.mabridge.protocol
 
-import kotlin.math.abs
-
 /** One ntfy message, as the parser hands it over. [timeSec] is ntfy's server time. */
 data class IncomingMessage(val id: String, val timeSec: Long, val topic: String, val body: String)
 
@@ -39,11 +37,13 @@ class Gate(
         val name = channel.name.lowercase()
 
         val nowMs = clockMs()
-        val age = nowMs / 1000 - msg.timeSec
-        if (abs(age) > TTL_SECONDS) {
+        val nowSec = nowMs / 1000
+        // A range check, not abs(now - time): abs overflows for extreme times.
+        if (msg.timeSec !in (nowSec - TTL_SECONDS)..(nowSec + TTL_SECONDS)) {
+            val age = if (msg.timeSec <= nowSec) "${nowSec - msg.timeSec}s old" else "${msg.timeSec - nowSec}s ahead"
             return Decision.DropStale(
                 Receipts.staleOf(msg.body, channel, registry),
-                "dropped-stale ($name, age ${age}s): $excerpt",
+                "dropped-stale ($name, $age): $excerpt",
             )
         }
         if (!seen.markIfNew(msg.id, nowMs)) {

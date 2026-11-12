@@ -21,6 +21,16 @@ class LogLineTest {
         assertEquals(s, logExcerpt(s))
     }
 
+    @Test fun unicodeLineAndFormatCharactersReplaced() {
+        // U+2028/U+2029 render as line breaks in a TextView; U+202E/U+200B hide or reorder text.
+        assertEquals("x?y?z?w?v", logExcerpt("x\u2028y\u2029z\u202Ew\u200Bv"))
+    }
+
+    @Test fun nonAsciiReplaced() {
+        assertEquals("caf?", logExcerpt("café"))
+        assertEquals("??", logExcerpt("\uD83D\uDE00"))
+    }
+
     @Test fun commandUnchanged() {
         assertEquals("launch meet", logExcerpt("launch meet"))
     }

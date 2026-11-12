@@ -19,7 +19,7 @@ intents (ntfy docs, "subscribe/phone"):
 1. **Broadcast intent → Tasker Intent Received** (primary). Documented,
    purpose-built, no notification scraping.
 2. **Notification intercept** (Profile → Event → Notification, app = ntfy).
-   Fallback; fragile against notification formatting and muting behaviour.
+   Fallback; fragile against notification formatting and muting behavior.
 3. **Tasker HTTP long-poll loop** on the topic's JSON endpoint. Rejected
    unless 1–2 fail: worst battery profile of the three.
 
@@ -82,7 +82,7 @@ device rather than the server itself.
   `%message` correctly resolved. Cached messages were also delivered on
   subscribe (owner topic showed all 3 earlier tests) — the TTL/dedup
   machinery in PROTOCOL §2 is load-bearing, not decorative.
-- Still open in A: muted-topic broadcast behaviour, VPN interference,
+- Still open in A: muted-topic broadcast behavior, VPN interference,
   50-message reliability run, 48 h battery cost. `%id` accessibility in
   Tasker actions is still unverified (probe logged topic/time/message/
   muted only); executor v1 will carry a harmless `%id` log line to settle

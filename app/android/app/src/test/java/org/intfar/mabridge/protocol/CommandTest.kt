@@ -55,6 +55,12 @@ class CommandTest {
         }
     }
 
+    @Test fun topicMustMatchExactly() {
+        assertNull(channelForTopic("mab-chris-razr-owner-x", "chris-razr"))
+        assertNull(channelForTopic("mab-chris-razr-owne", "chris-razr"))
+        assertNull(channelForTopic("xmab-chris-razr-family", "chris-razr"))
+    }
+
     @Test fun pilotRegistryMatchesVerifiedPackages() {
         // Verified on chris-razr over adb, 2026-11-12.
         assertEquals(

@@ -11,7 +11,10 @@ import java.util.Base64
  * Encoding the ID means a hostile ID can't add lines. Each change rewrites
  * the file through a temporary file and a rename.
  */
-class FileSeenStore(private val file: File) : SeenStore {
+class FileSeenStore(
+    private val file: File,
+    private val onWriteError: (Exception) -> Unit = {},
+) : SeenStore {
     private val seen = HashMap<String, Long>()
 
     init {
@@ -35,11 +38,17 @@ class FileSeenStore(private val file: File) : SeenStore {
         pruneSeen(seen, nowMs)
         if (id in seen) return false
         seen[id] = nowMs
-        val tmp = File(file.parentFile, file.name + ".tmp")
-        tmp.writeText(seen.entries.joinToString("") { (k, v) -> "${ENCODER.encodeToString(k.toByteArray(Charsets.UTF_8))} $v\n" })
-        if (!tmp.renameTo(file)) {
-            file.delete()
-            tmp.renameTo(file)
+        // A failed write (disk full, I/O error) keeps the in-memory entry, so the
+        // message still runs once in this process; only restart survival is lost.
+        try {
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            tmp.writeText(seen.entries.joinToString("") { (k, v) -> "${ENCODER.encodeToString(k.toByteArray(Charsets.UTF_8))} $v\n" })
+            if (!tmp.renameTo(file)) {
+                file.delete()
+                if (!tmp.renameTo(file)) throw java.io.IOException("rename failed")
+            }
+        } catch (e: Exception) {
+            onWriteError(e)
         }
         return true
     }

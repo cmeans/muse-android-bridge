@@ -21,11 +21,11 @@ until every Phase 1–3 item that bears on it has a recorded result.
 | # | Unknown | Test | Pass looks like |
 |---|---|---|---|
 | B1 | Exact package names on real hardware (Meet, Muse, RustDesk, …) | Read installed packages on the pilot phone; record per-device registry | Registry in executor config matches; every `launch` target verified |
-| B2 | Launch behaviour on a locked phone | Fire `launch meet` while locked; unlock minutes later | Nothing weird on the lock screen; app is foreground (or predictably not) after unlock; behaviour documented for the family runbook |
+| B2 | Launch behavior on a locked phone | Fire `launch meet` while locked; unlock minutes later | Nothing weird on the lock screen; app is foreground (or predictably not) after unlock; behavior documented for the family runbook |
 | B3 | Announce quality | Trigger each command class; is the banner/TTS understandable and does it name the channel? | A bystander can say afterwards who asked for what |
 | B4 | STOP controls | Disable family channel on-phone; fire family + owner commands; reboot; repeat | Family dead instantly, owner alive; states survive reboot; re-enable is owner-only and local |
 | B5 | Log integrity | Run a mixed day of commands | On-phone log complete, timestamped, matches ack receipts |
-| B6 | Malformed-input safety | Publish junk bodies, near-miss commands, oversized bodies, wrong-topic messages | Zero actions taken; `err unknown-command` receipts only |
+| B6 | Malformed-input safety | Publish junk bodies, near-miss commands, oversized bodies, wrong-topic messages | Zero actions taken; `err unknown-command` receipts for junk on a command topic, no receipt for other topics (PROTOCOL §5) |
 | B7 | Native-app parity (Phase 2) | A1–A5 + B2–B6 rerun against the app executor, including one boring week of background operation | Same results as Tasker executor, or documented differences accepted before swap |
 
 ## C. RustDesk server & Android host — Phase 3
@@ -35,7 +35,7 @@ until every Phase 1–3 item that bears on it has a recorded result.
 | C1 | Hole-punch vs relay from real networks | Connect controller → pilot phone on home WiFi, on mobile data, and on a third-party WiFi | Session establishes in all three; direct-vs-relay path recorded per case |
 | C2 | The owner's per-session tap count, cold | Kill RustDesk, reboot phone, start a session from scratch, count required human taps (incl. after service kill) | Exact tap list written into the runbook; nothing beyond Start service / Start now + any one-time grants |
 | C3 | Accessibility/input persistence | Reboot; check Input Control accessibility state | Survives reboot, or the re-enable steps are in the runbook |
-| C4 | Sideload reality on the target Android version | Install official RustDesk build on pilot phone; note Play Protect behaviour and the restricted-settings flow step by step | Full step list recorded; no undocumented surprise left for the in-person Peggy session |
+| C4 | Sideload reality on the target Android version | Install official RustDesk build on pilot phone; note Play Protect behavior and the restricted-settings flow step by step | Full step list recorded; no undocumented surprise left for the in-person Peggy session |
 | C5 | Whitelist semantics | Two controller IDs whitelisted; connect from both; remove one; retry | Both work; removed ID refused before password prompt; re-adding restores |
 | C6 | IP-change breakage (accepted risk — no DDNS) | Change the configured server address to a wrong IP; observe failure mode; restore | Failure is obvious and diagnosable; recovery procedure written down |
 
@@ -48,7 +48,7 @@ until every Phase 1–3 item that bears on it has a recorded result.
 | D3 | Input accuracy | Scripted task list: tap 20 assorted targets incl. small ones, scroll a list, type into fields, use Back/Home | ≥19/20 first-try taps; typing lands intact; misses are detectable from the next screenshot |
 | D4 | Loop latency | Time tap → next usable screenshot, direct and relayed | Tolerable for a fix-it pace; numbers recorded |
 | D5 | The two reference fixes | End to end via controller only: (1) revoke a Chrome site's notification permission; (2) uninstall a dummy app | Both completed by the agent alone (plus owner's §C2 taps) |
-| D6 | Secure screens | Open a FLAG_SECURE app (banking) during a session | Controller sees black; agent behaviour on black frames = stop and say so |
+| D6 | Secure screens | Open a FLAG_SECURE app (banking) during a session | Controller sees black; agent behavior on black frames = stop and say so |
 
 ## E. Owner experience & the other Muse — Phase 4
 

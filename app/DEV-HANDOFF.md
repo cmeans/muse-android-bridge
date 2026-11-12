@@ -11,8 +11,9 @@ Replace the Tasker pilot with one small Android app that implements
 
 - subscribe to the device's owner and family ntfy topics;
 - accept only exact registry commands;
-- apply STOP gates, 120-second TTL, and 24-hour message-ID dedup in
-  that order;
+- apply the 120-second TTL, 24-hour message-ID dedup, exact registry
+  match and STOP gates, in that order (PROTOCOL v0.2 §5; the Tasker pilot
+  checked STOP first);
 - announce every accepted action on the phone;
 - launch the target app, or perform `ring find`;
 - post a receipt to the ack topic and keep a local log;
@@ -22,7 +23,7 @@ Replace the Tasker pilot with one small Android app that implements
 Non-goals for v1: no accessibility automation, no general intent or
 shell runner, no screen control, no credential/PIN entry, no purchases,
 and no RustDesk session control beyond launching the RustDesk app.
-RustDesk bootstrap/update commands remain `err not-implemented` until
+RustDesk bootstrap/update commands remain `err <command> not-implemented` until
 the separate Phase 3 design is approved.
 
 ## What is already proven
@@ -51,15 +52,13 @@ Kotlin 2.2.10, compileSdk/targetSdk 36, built with a JDK 21). It has
 on the workstation. Claude-dev may retain, refactor, or replace the
 scaffold; the protocol and tests are the contract, not this code.
 
-Known scaffold gaps before any family deployment:
+Known gaps before any family deployment (2026-11-12: the executor plan,
+`docs/superpowers/plans/2026-11-12-app-executor-v1.md`, added Keystore
+credential storage, the verified registry, and unit tests for check order,
+TTL, dedup and malformed input; what follows is still open):
 
-- move the phone password out of plain SharedPreferences into
-  Keystore-backed encrypted storage;
-- verify every registry package name on real hardware, especially
-  Muse;
-- add unit tests for gate order, TTL, dedup, and malformed commands;
-- prove reconnect/backoff, Doze behaviour, locked-phone behaviour,
-  NordVPN behaviour, and 48-hour battery cost;
+- prove reconnect/backoff, Doze behavior, locked-phone behavior,
+  NordVPN behavior, and 48-hour battery cost;
 - a reproducible signing setup (the Gradle wrapper is generated and
   pinned).
 
@@ -93,7 +92,7 @@ Known scaffold gaps before any family deployment:
 ## Decisions still open
 
 - Peggy's phone make/model and Android version; this affects minimum
-  SDK, background limits, RustDesk behaviour, and setup instructions.
+  SDK, background limits, RustDesk behavior, and setup instructions.
 - Final distribution route for family phones: sideloaded release APK
   versus Play internal testing.
 - Whether direct ntfy streaming is sufficient or the production app

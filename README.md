@@ -55,7 +55,7 @@ frozen, never-touched family deployment; the app (store/sideload
 install, self-updating, one purpose) is the right Peggy surface.
 Tasker work freezes as validated research: PROTOCOL.md is
 executor-agnostic, so every finding (topics, ACLs, TTL/dedup,
-cached-replay behaviour, registry, STOP semantics) carries over
+cached-replay behavior, registry, STOP semantics) carries over
 unchanged. Next: native Android app v1 — own ntfy subscription,
 registry launch, announce, ack, STOP UI — tested on the pilot phone
 first, same rollout order (Chris → Michele → Peggy). Chris will hand

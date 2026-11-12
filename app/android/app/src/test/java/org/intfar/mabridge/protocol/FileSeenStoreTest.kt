@@ -33,6 +33,21 @@ class FileSeenStoreTest {
         assertTrue(s.markIfNew("b", t + 1))
     }
 
+    @Test fun writeFailureStillDedupsInMemory() {
+        val dir = tmp.newFolder("ro")
+        val f = File(dir, "seen_ids.txt")
+        dir.setWritable(false)
+        try {
+            var errors = 0
+            val s = FileSeenStore(f) { errors++ }
+            assertTrue(s.markIfNew("a", t))
+            assertFalse(s.markIfNew("a", t + 1))
+            assertTrue(errors >= 1)
+        } finally {
+            dir.setWritable(true)
+        }
+    }
+
     @Test fun idWithSpaceOrNewlineCannotForgeEntries() {
         val f = File(tmp.root, "seen_ids.txt")
         val s = FileSeenStore(f)
