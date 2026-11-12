@@ -44,7 +44,21 @@ Phase 1 in progress (2026-11-11). Design documents complete; the pilot
 device's ntfy principals are provisioned and verified on the self-hosted
 server, and security drills F1 (publisher revocation) and F2 (phone
 credential scope) have passed — see `server/ntfy-provisioning.md`.
-Next: Tasker executor on the pilot phone (test groups A and B).
+The Tasker pilot validated the wire protocol end to end on the pilot
+phone (test group A1 confirmed live).
+
+**Decision (Chris, 2026-11-11 22:38 CT, superseding the same-day
+"Tasker first, app in parallel" plan): go the native app route NOW.**
+Rationale: the Tasker setup experience — imports, project management,
+per-version XML dialects — is helper-tolerable but wrong-shaped for a
+frozen, never-touched family deployment; the app (store/sideload
+install, self-updating, one purpose) is the right Peggy surface.
+Tasker work freezes as validated research: PROTOCOL.md is
+executor-agnostic, so every finding (topics, ACLs, TTL/dedup,
+cached-replay behaviour, registry, STOP semantics) carries over
+unchanged. Next: native Android app v1 — own ntfy subscription,
+registry launch, announce, ack, STOP UI — tested on the pilot phone
+first, same rollout order (Chris → Michele → Peggy).
 
 Remote: `cmeans/muse-android-bridge` (private). This VM cannot push over
 git SSH/HTTPS (egress resets SSH), so history is published as one
