@@ -58,7 +58,11 @@ executor-agnostic, so every finding (topics, ACLs, TTL/dedup,
 cached-replay behaviour, registry, STOP semantics) carries over
 unchanged. Next: native Android app v1 — own ntfy subscription,
 registry launch, announce, ack, STOP UI — tested on the pilot phone
-first, same rollout order (Chris → Michele → Peggy).
+first, same rollout order (Chris → Michele → Peggy). Chris will hand
+implementation to claude-dev once the path is understood; the map,
+current scaffold status, open decisions, and acceptance boundary are
+in `app/DEV-HANDOFF.md`. The scaffold under `app/android/` is an
+uncompiled spike, not a finished app.
 
 Remote: `cmeans/muse-android-bridge` (private). This VM cannot push over
 git SSH/HTTPS (egress resets SSH), so history is published as one
