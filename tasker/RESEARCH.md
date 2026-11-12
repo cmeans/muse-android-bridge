@@ -61,3 +61,29 @@ already cover the core of test F2: the phone credential can read only its
 two command topics, cannot publish to them (403), cannot read the ack topic
 or unrelated topics (403). F2's remaining piece is doing it from a second
 device rather than the server itself.
+
+## A1 device confirmation (2026-11-11 22:34 CT, Chris's Razr+)
+
+- Import dialect settled by trial: **classic export structure works** —
+  `<EventCat sr="con0" ve="2">` in the profile, named task with `<pri>`,
+  `tv="6.4.15"`. The generator's bare `<Event>` form was rejected by the
+  device ("failed to import profile data") even at matching tv.
+- Tasker will **not** re-import a project whose name already exists
+  ("a project with that name already exists") — delete-then-import, or
+  ship new names. Standalone `.tsk.xml` in bare TaskerData form fails
+  with "bad packed data format" — do not use that route.
+- Send Intent **Target: 0=Broadcast Receiver, 1=Activity, 2=Service**
+  (official catalog). v4 shipped 0 and silently did nothing; v5 with 1
+  opened the ntfy subscribe screens via `ntfy://` deep links, and both
+  bridge topics were subscribed with two taps total, zero typing.
+- **Receive path CONFIRMED live**: messages published to both
+  `mab-chris-razr-owner` (`launch meet`) and `mab-chris-razr-family`
+  (`launch whatsapp`) produced the probe Flash with `%topic` and
+  `%message` correctly resolved. Cached messages were also delivered on
+  subscribe (owner topic showed all 3 earlier tests) — the TTL/dedup
+  machinery in PROTOCOL §2 is load-bearing, not decorative.
+- Still open in A: muted-topic broadcast behaviour, VPN interference,
+  50-message reliability run, 48 h battery cost. `%id` accessibility in
+  Tasker actions is still unverified (probe logged topic/time/message/
+  muted only); executor v1 will carry a harmless `%id` log line to settle
+  it — unresolved variables stay literal, which is itself the answer.
