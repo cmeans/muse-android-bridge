@@ -137,10 +137,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         when {
             launchMatch != null -> {
                 val app = launchMatch.groupValues[1]
-                val entry = Config.REGISTRY[app]
+                val entry = org.intfar.mabridge.protocol.PILOT_REGISTRY.apps[app]
                 if (entry == null) { ack("err unknown-command $id"); log("unknown app $app"); return }
-                announce("Opening ${entry.first}")
-                val intent = packageManager.getLaunchIntentForPackage(entry.second)
+                announce("Opening ${entry.displayName}")
+                val intent = packageManager.getLaunchIntentForPackage(entry.pkg)
                 if (intent == null) {
                     ack("err not-installed $app"); log("not installed: $app"); return
                 }

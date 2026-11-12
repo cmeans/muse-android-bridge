@@ -1,6 +1,9 @@
 # muse-android-bridge — Wire Protocol
 
-**Version:** 0.1 (DRAFT, 2026-11-11)
+**Version:** 0.2 (DRAFT, 2026-11-12). 0.2 records the packages verified on the
+pilot phone (§4.3), fixes the receipt list (§6), and states that a channel
+disabled by STOP still marks a message as seen (§5). Approved by Chris,
+2026-11-12. 0.1: 2026-11-11.
 **Status:** Phase 0 deliverable. This document is the contract. The Tasker pilot
 and the native app are interchangeable executors of this protocol; neither may
 extend it unilaterally.
@@ -113,11 +116,11 @@ software is an owner-channel-only act.
 
 | `<app>` | Android package | Notes |
 |---|---|---|
-| `meet` | `com.google.android.apps.meetings` | Verify on device at provisioning |
+| `meet` | `com.google.android.apps.tachyon` | Verified on chris-razr 2026-11-12 (Google Meet; `…apps.meetings` is not installed there) |
 | `whatsapp` | `com.whatsapp` | |
 | `facebook` | `com.facebook.katana` | |
 | `chrome` | `com.android.chrome` | |
-| `muse` | TBD at provisioning | Resolve from the installed Muse app |
+| `muse` | `com.facebook.aura` | "Muse from Meta"; verified on chris-razr 2026-11-12 (launcher `.main.AuraMainActivity`) |
 | `rustdesk` | `com.carriez.flutter_hbb` | Present only where RustDesk is deployed |
 
 Package names are verified against the actual phone at provisioning and
@@ -128,11 +131,15 @@ recorded in the executor config. The registry may differ per phone; the
 
 On receiving a message, an executor MUST:
 
-1. Check freshness and dedup (§2.3). Drop silently (log only).
+1. Check freshness and dedup (§2.3). A message that passes is recorded as
+   seen here, before any later check, so a copy redelivered after a STOP
+   is lifted cannot run. A stale message is logged and gets a
+   `dropped-stale` receipt (§6); a duplicate is logged only, since the
+   first receipt stands.
 2. Match the body against the registry for that channel. No match → publish
    `err unknown-command` receipt, take no other action. Never attempt to
    interpret, complete, or "helpfully" parse a non-registry body.
-3. Check the channel's local enable state (§7). Disabled → `err disabled`.
+3. Check the channel's local enable state (§7). Disabled → `err <command> disabled`.
 4. Announce on the phone *before* acting: a persistent visual banner plus
    spoken announcement where the executor supports it, naming the action and
    the channel — e.g. "Opening Meet — asked by family." The phone's owner
@@ -146,14 +153,22 @@ act on messages from any topic other than the two command topics.
 
 ## 6. Receipts (`mab-<device>-ack`)
 
-Body format: `<result> <command>` with an optional short detail token:
+Body format: `<result> <command>` with an optional short detail token. No
+receipt carries a message ID. The complete list:
 
 ```
-ok launch meet
-err launch meet not-installed
-err unknown-command
-dropped-stale launch meet        (also published when connectivity allows)
+ok <command>                       e.g. ok launch meet
+err <command> not-installed        launch only; nothing is announced
+err <command> disabled             channel off by STOP (§7)
+err <command> not-implemented      bootstrap rustdesk / update rustdesk until Phase 3
+err unknown-command                never echoes the body
+dropped-stale <command>            stale and a registry command on its channel
+dropped-stale                      stale and not a registry command
+ok status report battery=<n> version=<app version> protocol=<version> owner=<on|off> family=<on|off>
 ```
+
+A duplicate gets no receipt. `dropped-stale` receipts are also published
+when connectivity allows.
 
 Receipts confirm what the *executor did*, not what the user did next
 (`ok launch meet` means Meet came to the foreground, not that anyone
@@ -203,6 +218,7 @@ report it in `status report` receipts.
 2. Announce mechanism in the Tasker executor: Tasker `Say` + flash vs a
    persistent notification. (Native app will do banner + TTS.)
 3. Does `status report` belong in the pilot, or is it app-phase scope?
-4. Exact Muse app package name and Meet package name on the pilot phone.
+4. ~~Exact Muse app package name and Meet package name on the pilot phone.~~
+   Resolved 2026-11-12 (§4.3).
 5. Ack-topic behaviour while the phone is on a VPN (pilot phone runs a
    consumer VPN almost daily) — verify publish and subscribe both survive it.

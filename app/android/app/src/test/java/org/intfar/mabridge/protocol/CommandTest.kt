@@ -55,6 +55,21 @@ class CommandTest {
         }
     }
 
+    @Test fun pilotRegistryMatchesVerifiedPackages() {
+        // Verified on chris-razr over adb, 2026-11-12.
+        assertEquals(
+            mapOf(
+                "meet" to App("Meet", "com.google.android.apps.tachyon"),
+                "whatsapp" to App("WhatsApp", "com.whatsapp"),
+                "facebook" to App("Facebook", "com.facebook.katana"),
+                "chrome" to App("Chrome", "com.android.chrome"),
+                "muse" to App("Muse", "com.facebook.aura"),
+                "rustdesk" to App("RustDesk", "com.carriez.flutter_hbb"),
+            ),
+            PILOT_REGISTRY.apps,
+        )
+    }
+
     @Test fun topicsPerChannel() {
         assertEquals("mab-chris-razr-owner", OWNER.topic("chris-razr"))
         assertEquals("mab-chris-razr-family", FAMILY.topic("chris-razr"))

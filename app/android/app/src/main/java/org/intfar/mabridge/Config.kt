@@ -34,17 +34,4 @@ object Config {
 
     const val TTL_SECONDS = 120L
     const val DEDUP_WINDOW_MS = 24L * 60 * 60 * 1000
-
-    /** Command registry (PROTOCOL section 4): display name -> package. */
-    val REGISTRY: Map<String, Pair<String, String>> = mapOf(
-        "meet" to ("Meet" to "com.google.android.apps.meetings"),
-        "whatsapp" to ("WhatsApp" to "com.whatsapp"),
-        "facebook" to ("Facebook" to "com.facebook.katana"),
-        "chrome" to ("Chrome" to "com.android.chrome"),
-        "rustdesk" to ("RustDesk" to "com.carriez.flutter_hbb"),
-        "muse" to ("Muse" to "com.anthropic.claude"),
-    )
-
-    val FAMILY_COMMANDS = setOf("launch", "ring find")
-    val LAUNCHABLE = REGISTRY.keys
 }
