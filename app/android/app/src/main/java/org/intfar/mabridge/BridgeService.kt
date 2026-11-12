@@ -80,7 +80,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForegroundWithStatus("Listening for commands")
         if (intent?.action == ACTION_STOP_RING) {
-            stopRinging()
+            stopRinging("Stop ringing tapped")
+            // A leftover ring notification can start a service that isn't running.
+            if (!running) stopSelf()
             return START_STICKY
         }
         val missing = Config.missingSetup(this)
@@ -102,7 +104,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         running = false
         Config.prefs(this).edit().putBoolean("service_running", false).apply()
         conn?.disconnect()
-        stopRinging()
+        stopRinging("bridge stopped")
         tts?.shutdown()
         acks.shutdown()
         log("service stopped")
@@ -142,15 +144,19 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 } else {
                     Config.prefs(this).edit().putLong("last_connected", System.currentTimeMillis()).apply()
                     log("subscribed")
-                    var first = true
-                    c.inputStream.bufferedReader().use { reader ->
-                        while (running) {
-                            val line = reader.readLine() ?: break
-                            // Reset only once the stream delivers something, so a server
-                            // that answers 200 and closes at once still backs off.
-                            if (first) { backoff.reset(); first = false }
-                            if (running && line.isNotBlank()) handle(line)
+                    val openedAt = System.currentTimeMillis()
+                    try {
+                        c.inputStream.bufferedReader().use { reader ->
+                            while (running) {
+                                val line = reader.readLine() ?: break
+                                if (running && line.isNotBlank()) handle(line)
+                            }
                         }
+                    } finally {
+                        // Reset only after a stream that stayed up: ntfy always sends an
+                        // `open` line first, so a connection dropped right after opening
+                        // must keep backing off rather than reconnect every 2 s.
+                        if (System.currentTimeMillis() - openedAt >= STABLE_STREAM_MS) backoff.reset()
                     }
                     if (running) log("stream ended")
                 }
@@ -285,7 +291,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
      */
     @Synchronized
     private fun startRing(channel: Channel): Boolean {
-        stopRinging()
+        stopRinging("superseded by a new ring")
         val rt = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
             ?: RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
             ?: return false
@@ -302,9 +308,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             savedAlarmVolume = null
             log("ring: couldn't raise the alarm volume: ${e.javaClass.simpleName}")
         }
-        rt.play()
         ringtone = rt
         val gen = ++ringGeneration
+        try {
 
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         ensureAnnounceChannel(nm)
@@ -324,19 +330,28 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         )
         thread(name = "mab-ring") {
             val until = System.currentTimeMillis() + RING_MS
-            while (ringGeneration == gen && System.currentTimeMillis() < until &&
-                !Config.stopAll(this) && !(channel == Channel.FAMILY && Config.stopFamily(this))
-            ) {
+            var reason = "30 s elapsed"
+            while (ringGeneration == gen) {
+                if (System.currentTimeMillis() >= until) break
+                if (Config.stopAll(this)) { reason = "STOP all"; break }
+                if (channel == Channel.FAMILY && Config.stopFamily(this)) { reason = "STOP family"; break }
                 try { Thread.sleep(250) } catch (_: InterruptedException) { break }
             }
-            synchronized(this) { if (ringGeneration == gen) stopRinging() }
+            synchronized(this) { if (ringGeneration == gen) stopRinging(reason) }
+        }
+        // Started last, once the notification and the watcher that stop it exist.
+        rt.play()
+        } catch (e: Exception) {
+            stopRinging("error")
+            throw e
         }
         return true
     }
 
     @Synchronized
-    private fun stopRinging() {
+    private fun stopRinging(reason: String? = null) {
         ringGeneration++
+        if (ringtone != null && reason != null) log("ring ended: $reason")
         ringtone?.stop()
         ringtone = null
         savedAlarmVolume?.let { v ->
@@ -411,5 +426,6 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         private const val RING_MS = 30_000L
         private const val PREF_LAST_ID = "last_message_id"
         private const val STREAM_READ_TIMEOUT_MS = 120_000
+        private const val STABLE_STREAM_MS = 60_000L
     }
 }

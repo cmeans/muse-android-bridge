@@ -53,6 +53,12 @@ class FileSeenStore(
         return true
     }
 
+    @Synchronized
+    override fun wasSeen(id: String, nowMs: Long): Boolean {
+        pruneSeen(seen, nowMs)
+        return id in seen
+    }
+
     private companion object {
         val ENCODER: Base64.Encoder = Base64.getUrlEncoder().withoutPadding()
         val DECODER: Base64.Decoder = Base64.getUrlDecoder()

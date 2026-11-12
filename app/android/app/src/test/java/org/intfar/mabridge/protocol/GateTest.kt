@@ -67,6 +67,19 @@ class GateTest {
         assertTrue(gate.decide(msg("launch meet", id = "same")) is Decision.DropDuplicate)
     }
 
+    @Test fun staleRedeliveryOfAlreadyRunMessageIsDuplicate() {
+        // A catch-up replay brings back a message that already ran, now older than 120 s:
+        // it must not get a dropped-stale receipt that contradicts its earlier ok.
+        assertTrue(gate.decide(msg("launch meet", id = "ran", timeSec = nowSec)) is Decision.Run)
+        clock = t + 300_000
+        assertTrue(gate.decide(msg("launch meet", id = "ran", timeSec = nowSec)) is Decision.DropDuplicate)
+    }
+
+    @Test fun staleNewMessageStillGetsStaleReceipt() {
+        clock = t + 300_000
+        assertTrue(gate.decide(msg("launch meet", id = "never-seen", timeSec = nowSec)) is Decision.DropStale)
+    }
+
     @Test fun duplicateWindowExpires() {
         assertTrue(gate.decide(msg("launch meet", id = "same")) is Decision.Run)
         clock = t + day + 1

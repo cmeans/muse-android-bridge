@@ -175,8 +175,9 @@ dropped-stale                      stale and not a registry command
 ok status report battery=<n> version=<app version> protocol=<version> owner=<on|off> family=<on|off>
 ```
 
-A duplicate gets no receipt. `dropped-stale` receipts are also published
-when connectivity allows.
+A duplicate gets no receipt, including a replayed copy of a message already
+handled that is now older than 120 s (its first receipt stands).
+`dropped-stale` receipts are also published when connectivity allows.
 
 Receipts confirm what the *executor did*, not what the user did next
 (`ok launch meet` means Meet came to the foreground, not that anyone
