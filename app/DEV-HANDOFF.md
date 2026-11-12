@@ -49,12 +49,23 @@ Kotlin 2.2.21, compileSdk/targetSdk 36, built with a JDK 21). The
 toolchain stays on the AGP 8 / Gradle 8 line on purpose: AGP 9 needs
 Gradle 9 and moves Kotlin into the plugin itself (built-in Kotlin),
 which is a migration of its own rather than a version bump, so it waits
-for a PR of its own. AGP 8.13.2 is the last 8.x release, and Kotlin
-2.2.21 the last 2.2 patch. It has
-**not** been run on a device. Muse's VM never completed an SDK install
+for a PR of its own. AGP 8.13.2 is the last 8.x release. Kotlin stays
+on the 2.2 line, at its last patch (2.2.21), to keep this baseline's
+bump small while the executor work is stacked on it; 2.3 and 2.4 also
+build on this toolchain and can follow separately. It has **not** been
+run on a device. Muse's VM never completed an SDK install
 (`sdkmanager` downloads failed in its HTTP proxy tunnel), so builds run
 on the workstation. Claude-dev may retain, refactor, or replace the
 scaffold; the protocol and tests are the contract, not this code.
+
+**Building.** From `app/android`, run
+`./gradlew assembleDebug testDebugUnitTest`. It needs a JDK 17 or newer
+(Android Studio's bundled JBR 21 works: `JAVA_HOME=/opt/android-studio/jbr`
+on Linux) and the Android SDK, located by `ANDROID_HOME` or by
+`sdk.dir=<path>` in `app/android/local.properties` (ignored by git),
+with the `android-36` platform and build-tools 35.0.0 installed.
+Without an SDK location Gradle stops with "SDK location not found".
+The debug APK lands in `app/build/outputs/apk/debug/`.
 
 Known scaffold gaps before any family deployment:
 
@@ -70,9 +81,9 @@ Known scaffold gaps before any family deployment:
 
 ## Recommended implementation path
 
-1. **Build baseline.** Finish the SDK/Gradle setup in the development
-   environment, produce a clean debug build, and add tests around the
-   protocol state machine before polishing UI.
+1. **Build baseline.** The SDK/Gradle setup and a clean debug build
+   are done (2026-11-12). Next: tests around the protocol state machine,
+   before polishing UI.
 2. **Transport.** Implement the ntfy subscription as a foreground
    service with reconnect/backoff. Decide from device evidence whether
    a direct streaming connection is reliable enough on the Razr+ under
@@ -93,9 +104,10 @@ Known scaffold gaps before any family deployment:
 6. **Device gates.** Run the app equivalents of test groups A and B on
    the Razr+: delivery latency/reliability, VPN, stale replay, dedup,
    locked phone, STOP persistence, malformed-input safety, and battery.
-   targetSdk 36 opts the app into Android 16's behavior changes (for
-   example the foreground-service rules behind issue #1), so these gates
-   cover those too. Only after they pass does the app move to Michele,
+   targetSdk 36 opts the app into Android 16's behavior changes, on
+   top of Android 15's, which already applied at targetSdk 35 (such as
+   the foreground-service rules behind issue #1); these gates cover
+   both. Only after they pass does the app move to Michele,
    then Peggy.
 
 ## Decisions still open
