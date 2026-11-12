@@ -43,13 +43,29 @@ the separate Phase 3 design is approved.
 shape concrete: manifest, configuration/registry, a foreground
 `BridgeService`, setup/STOP/log activity, and a boot receiver.
 
-It has **not** been compiled or run on a device. The local Android SDK
-platform installation is not complete: JDK 17 and command-line tools
-are installed under `~/workspace/android-toolchain/`, but
-`sdkmanager` package downloads have intermittently failed inside the
-VM's HTTP proxy tunnel (`NoSuchElementException` in Java's proxy
-tunnelling code). Claude-dev may retain, refactor, or replace the
+It builds (2026-11-12, claude-dev, on Chris's workstation: Gradle
+wrapper 8.14.7 with a pinned checksum, Android Gradle plugin 8.13.2,
+Kotlin 2.2.21, compileSdk/targetSdk 36, built with a JDK 21). The
+toolchain stays on the AGP 8 / Gradle 8 line on purpose: AGP 9 needs
+Gradle 9 and moves Kotlin into the plugin itself (built-in Kotlin),
+which is a migration of its own rather than a version bump, so it waits
+for a PR of its own. AGP 8.13.2 is the last 8.x release. Kotlin stays
+on the 2.2 line, at its last patch (2.2.21), to keep this baseline's
+bump small while the executor work is stacked on it; 2.3 and 2.4 also
+build on this toolchain and can follow separately. It has **not** been
+run on a device. Muse's VM never completed an SDK install
+(`sdkmanager` downloads failed in its HTTP proxy tunnel), so builds run
+on the workstation. Claude-dev may retain, refactor, or replace the
 scaffold; the protocol and tests are the contract, not this code.
+
+**Building.** From `app/android`, run
+`./gradlew assembleDebug testDebugUnitTest`. It needs a JDK 17 or newer
+(Android Studio's bundled JBR 21 works: `JAVA_HOME=/opt/android-studio/jbr`
+on Linux) and the Android SDK, located by `ANDROID_HOME` or by
+`sdk.dir=<path>` in `app/android/local.properties` (ignored by git),
+with the `android-36` platform and build-tools 35.0.0 installed.
+Without an SDK location Gradle stops with "SDK location not found".
+The debug APK lands in `app/build/outputs/apk/debug/`.
 
 Known scaffold gaps before any family deployment:
 
@@ -60,13 +76,14 @@ Known scaffold gaps before any family deployment:
 - add unit tests for gate order, TTL, dedup, and malformed commands;
 - prove reconnect/backoff, Doze behaviour, locked-phone behaviour,
   NordVPN behaviour, and 48-hour battery cost;
-- generate and pin the Gradle wrapper and a reproducible signing setup.
+- a reproducible signing setup (the Gradle wrapper is generated and
+  pinned).
 
 ## Recommended implementation path
 
-1. **Build baseline.** Finish the SDK/Gradle setup in the development
-   environment, produce a clean debug build, and add tests around the
-   protocol state machine before polishing UI.
+1. **Build baseline.** The SDK/Gradle setup and a clean debug build
+   are done (2026-11-12). Next: tests around the protocol state machine,
+   before polishing UI.
 2. **Transport.** Implement the ntfy subscription as a foreground
    service with reconnect/backoff. Decide from device evidence whether
    a direct streaming connection is reliable enough on the Razr+ under
@@ -87,7 +104,11 @@ Known scaffold gaps before any family deployment:
 6. **Device gates.** Run the app equivalents of test groups A and B on
    the Razr+: delivery latency/reliability, VPN, stale replay, dedup,
    locked phone, STOP persistence, malformed-input safety, and battery.
-   Only after those pass does the app move to Michele, then Peggy.
+   targetSdk 36 opts the app into Android 16's behavior changes, on
+   top of Android 15's, which already applied at targetSdk 35 (such as
+   the foreground-service rules behind issue #1); these gates cover
+   both. Only after they pass does the app move to Michele,
+   then Peggy.
 
 ## Decisions still open
 
