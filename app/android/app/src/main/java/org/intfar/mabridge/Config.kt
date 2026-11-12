@@ -3,7 +3,7 @@ package org.intfar.mabridge
 import android.content.Context
 import android.content.SharedPreferences
 
-/** Bridge configuration + the PROTOCOL.md constants. */
+/** The bridge's stored setup and STOP switches (the protocol constants live in `protocol/`). */
 object Config {
     private const val PREFS = "mabridge"
 
@@ -19,8 +19,6 @@ object Config {
     fun username(ctx: Context): String =
         prefs(ctx).getString("username", "")!!
 
-    fun ownerTopic(ctx: Context) = "mab-${deviceSlug(ctx)}-owner"
-    fun familyTopic(ctx: Context) = "mab-${deviceSlug(ctx)}-family"
     fun ackTopic(ctx: Context) = "mab-${deviceSlug(ctx)}-ack"
 
     fun stopAll(ctx: Context) = prefs(ctx).getBoolean("stop_all", false)

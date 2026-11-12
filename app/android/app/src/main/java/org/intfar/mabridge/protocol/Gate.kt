@@ -40,9 +40,9 @@ class Gate(
         val nowSec = nowMs / 1000
         // A range check, not abs(now - time): abs overflows for extreme times.
         if (msg.timeSec !in (nowSec - TTL_SECONDS)..(nowSec + TTL_SECONDS)) {
-            // A replayed copy of a message already handled is a duplicate, not a
-            // stale drop: its first receipt stands (§6).
-            if (seen.wasSeen(msg.id, nowMs)) {
+            // Recorded as seen too: a replayed copy of a message already handled, or a
+            // second copy of a stale one, is a duplicate whose first receipt stands (§6).
+            if (!seen.markIfNew(msg.id, nowMs)) {
                 return Decision.DropDuplicate("duplicate ($name, replayed) ${logExcerpt(msg.id)}: $excerpt")
             }
             val age = if (msg.timeSec <= nowSec) "${nowSec - msg.timeSec}s old" else "${msg.timeSec - nowSec}s ahead"

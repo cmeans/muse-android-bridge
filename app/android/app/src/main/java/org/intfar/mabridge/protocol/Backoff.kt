@@ -20,4 +20,13 @@ class Backoff(
     fun reset() {
         current = baseMs
     }
+
+    /**
+     * A stream that stayed up [stableMs] or longer resets the delays. ntfy sends an
+     * `open` line first on every connect, so resetting on the first line would let a
+     * connection dropped right after opening reconnect every 2 s forever.
+     */
+    fun streamEnded(lifetimeMs: Long, stableMs: Long = 60_000) {
+        if (lifetimeMs >= stableMs) reset()
+    }
 }

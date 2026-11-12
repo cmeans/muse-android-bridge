@@ -41,9 +41,11 @@ import kotlin.concurrent.thread
 
 /**
  * The executor's I/O. One ntfy streaming connection carries both command
- * topics; every line goes through parseNtfyLine and Gate.decide (all
- * protocol decisions live there), and this class only carries out the
- * Decision: announce, launch or ring, post the receipt, append to the log.
+ * topics; every line goes through parseNtfyLine and Gate.decide (every gate
+ * decision: topic, TTL, dedup, registry, STOP), and this class carries out the
+ * Decision: announce, launch or ring, post the receipt, append to the log. The
+ * action-time receipts (not-installed, cannot-announce, failed) are decided
+ * here and are covered by the device tests, not the JVM tests.
  */
 class BridgeService : Service(), TextToSpeech.OnInitListener {
 
@@ -69,9 +71,11 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             registry = PILOT_REGISTRY,
             seen = FileSeenStore(File(filesDir, "seen_ids.txt")) { log("dedup file write failed: ${it.javaClass.simpleName}") },
             clockMs = System::currentTimeMillis,
-            stop = { StopState(all = Config.stopAll(this), family = Config.stopFamily(this)) },
+            stop = ::stopState,
         )
     }
+
+    private fun stopState() = StopState(all = Config.stopAll(this), family = Config.stopFamily(this))
 
     override fun onInit(status: Int) {
         ttsReady = status == TextToSpeech.SUCCESS
@@ -101,13 +105,14 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
+        val wasRunning = running
         running = false
         Config.prefs(this).edit().putBoolean("service_running", false).apply()
         conn?.disconnect()
         stopRinging("bridge stopped")
         tts?.shutdown()
         acks.shutdown()
-        log("service stopped")
+        if (wasRunning) log("service stopped")
         super.onDestroy()
     }
 
@@ -153,10 +158,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                             }
                         }
                     } finally {
-                        // Reset only after a stream that stayed up: ntfy always sends an
-                        // `open` line first, so a connection dropped right after opening
-                        // must keep backing off rather than reconnect every 2 s.
-                        if (System.currentTimeMillis() - openedAt >= STABLE_STREAM_MS) backoff.reset()
+                        backoff.streamEnded(System.currentTimeMillis() - openedAt)
                     }
                     if (running) log("stream ended")
                 }
@@ -209,6 +211,17 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     private fun run(command: Command, channel: Channel) {
         val who = if (channel == Channel.OWNER) "the owner channel" else "family"
         val name = channel.name.lowercase()
+        // Launch and ring announce first; without a visible banner they don't run (§1).
+        if ((command is Command.Launch || command == Command.RingFind) && !canAnnounce()) {
+            // A launch of an app that isn't installed still reports not-installed first.
+            val notInstalled = command is Command.Launch &&
+                packageManager.getLaunchIntentForPackage(PILOT_REGISTRY.apps.getValue(command.app).pkg) == null
+            if (!notInstalled) {
+                ack(Receipts.cannotAnnounce(command))
+                log("cannot-announce ($name): ${command.text}: notifications are off")
+                return
+            }
+        }
         when (command) {
             is Command.Launch -> {
                 val app = PILOT_REGISTRY.apps.getValue(command.app)
@@ -216,11 +229,6 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 if (intent == null) {
                     ack(Receipts.notInstalled(command))
                     log("not-installed ($name): ${command.text}")
-                    return
-                }
-                if (!canAnnounce()) {
-                    ack(Receipts.cannotAnnounce(command))
-                    log("cannot-announce ($name): ${command.text}: notifications are off")
                     return
                 }
                 if (!Settings.canDrawOverlays(this)) {
@@ -234,11 +242,6 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 log("ok ($name): ${command.text}")
             }
             Command.RingFind -> {
-                if (!canAnnounce()) {
-                    ack(Receipts.cannotAnnounce(command))
-                    log("cannot-announce ($name): ${command.text}: notifications are off")
-                    return
-                }
                 announce("Ringing so you can find the phone: asked by $who")
                 if (startRing(channel)) {
                     ack(Receipts.ok(command))
@@ -252,8 +255,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 val bm = getSystemService(BATTERY_SERVICE) as BatteryManager
                 val battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
-                val stop = StopState(all = Config.stopAll(this), family = Config.stopFamily(this))
-                ack(Receipts.status(battery, version, PROTOCOL_VERSION, stop))
+                ack(Receipts.status(battery, version, PROTOCOL_VERSION, stopState()))
                 log("ok ($name): ${command.text}")
             }
             Command.BootstrapRustdesk, Command.UpdateRustdesk -> {
@@ -311,7 +313,16 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         ringtone = rt
         val gen = ++ringGeneration
         try {
+            armRing(rt, gen, channel)
+        } catch (e: Exception) {
+            stopRinging("error")
+            throw e
+        }
+        return true
+    }
 
+    /** Posts Stop ringing, starts the watcher that ends the ring, then plays: in that order. */
+    private fun armRing(rt: Ringtone, gen: Int, channel: Channel) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         ensureAnnounceChannel(nm)
         val stopIntent = PendingIntent.getService(
@@ -341,11 +352,6 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         }
         // Started last, once the notification and the watcher that stop it exist.
         rt.play()
-        } catch (e: Exception) {
-            stopRinging("error")
-            throw e
-        }
-        return true
     }
 
     @Synchronized
@@ -366,8 +372,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     private fun ack(text: String) {
         if (acks.isShutdown) return
         acks.execute {
+            var c: HttpURLConnection? = null
             try {
-                val c = URL("${Config.server(this)}/").openConnection() as HttpURLConnection
+                c = URL("${Config.server(this)}/").openConnection() as HttpURLConnection
                 c.requestMethod = "POST"
                 c.setRequestProperty("Authorization", basicAuth())
                 c.setRequestProperty("Content-Type", "application/json")
@@ -377,10 +384,11 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 val payload = JSONObject().put("topic", Config.ackTopic(this)).put("message", text).toString()
                 c.outputStream.use { it.write(payload.toByteArray()) }
                 val code = c.responseCode
-                c.disconnect()
                 if (code != 200) log("receipt failed: HTTP $code: $text")
             } catch (e: Exception) {
                 log("receipt failed: ${e.javaClass.simpleName}: $text")
+            } finally {
+                c?.disconnect()
             }
         }
     }
@@ -426,6 +434,5 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         private const val RING_MS = 30_000L
         private const val PREF_LAST_ID = "last_message_id"
         private const val STREAM_READ_TIMEOUT_MS = 120_000
-        private const val STABLE_STREAM_MS = 60_000L
     }
 }

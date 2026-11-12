@@ -17,6 +17,20 @@ class BackoffTest {
         assertEquals(2000L, b.nextDelayMs())
     }
 
+    @Test fun shortStreamKeepsBackingOff() {
+        val b = Backoff(random = { 0.0 })
+        b.nextDelayMs(); b.nextDelayMs()
+        b.streamEnded(59_999)
+        assertEquals(8000L, b.nextDelayMs())
+    }
+
+    @Test fun stableStreamResets() {
+        val b = Backoff(random = { 0.0 })
+        b.nextDelayMs(); b.nextDelayMs()
+        b.streamEnded(60_000)
+        assertEquals(2000L, b.nextDelayMs())
+    }
+
     @Test fun jitterBounded() {
         val b = Backoff(random = { 1.0 })
         val delays = List(20) { b.nextDelayMs() }

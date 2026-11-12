@@ -61,6 +61,7 @@ class CredentialStore(ctx: Context) {
         }
     }
 
+    /** Not called yet; kept for the lost-key recovery in issue #3. */
     fun clear() {
         prefs.edit().remove(IV_KEY).remove(CT_KEY).apply()
     }

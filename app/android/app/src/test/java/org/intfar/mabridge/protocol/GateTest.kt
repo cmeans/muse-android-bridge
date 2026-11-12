@@ -80,6 +80,18 @@ class GateTest {
         assertTrue(gate.decide(msg("launch meet", id = "never-seen", timeSec = nowSec)) is Decision.DropStale)
     }
 
+    @Test fun secondStaleCopyIsDuplicate() {
+        assertTrue(gate.decide(msg("launch meet", id = "s1", timeSec = nowSec - 500)) is Decision.DropStale)
+        assertTrue(gate.decide(msg("launch meet", id = "s1", timeSec = nowSec - 500)) is Decision.DropDuplicate)
+    }
+
+    @Test fun futureDatedThenFreshCopyDoesNotRun() {
+        // Dropped while the phone's clock was behind; redelivered after it's corrected.
+        assertTrue(gate.decide(msg("launch meet", id = "f1", timeSec = nowSec + 600)) is Decision.DropStale)
+        clock = t + 600_000
+        assertTrue(gate.decide(msg("launch meet", id = "f1", timeSec = nowSec + 600)) is Decision.DropDuplicate)
+    }
+
     @Test fun duplicateWindowExpires() {
         assertTrue(gate.decide(msg("launch meet", id = "same")) is Decision.Run)
         clock = t + day + 1

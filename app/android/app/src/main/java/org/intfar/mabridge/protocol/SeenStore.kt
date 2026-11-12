@@ -4,9 +4,6 @@ package org.intfar.mabridge.protocol
 interface SeenStore {
     /** True if [id] wasn't seen in the last [DEDUP_WINDOW_MS]; records it either way. */
     fun markIfNew(id: String, nowMs: Long): Boolean
-
-    /** True if [id] was seen in the window; records nothing. */
-    fun wasSeen(id: String, nowMs: Long): Boolean
 }
 
 const val DEDUP_WINDOW_MS = 24L * 60 * 60 * 1000
@@ -25,11 +22,5 @@ class InMemorySeenStore : SeenStore {
         if (id in seen) return false
         seen[id] = nowMs
         return true
-    }
-
-    @Synchronized
-    override fun wasSeen(id: String, nowMs: Long): Boolean {
-        pruneSeen(seen, nowMs)
-        return id in seen
     }
 }
