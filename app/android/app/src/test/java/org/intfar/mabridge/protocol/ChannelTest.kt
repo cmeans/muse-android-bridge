@@ -1,5 +1,6 @@
 package org.intfar.mabridge.protocol
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,10 +35,29 @@ class ChannelTest {
     }
 
     @Test fun overlongServerIsRejectedWithoutThrowing() {
-        // A long dotted host overflowed the regex engine's stack (QA round 2 on #4).
-        val host = (1..1700).joinToString(".") { "a" } // about 3400 characters
-        assertFalse(isValidServer("https://$host"))
+        // A long dotted host overflowed the regex engine's stack (QA round 2 on #4). Run on a
+        // small fixed stack, so the test fails without the length cap whatever the JVM's default.
+        val host = (1..5000).joinToString(".") { "a" } // about 10,000 characters
+        var result: Boolean? = null
+        var thrown: Throwable? = null
+        val t = Thread(null, {
+            try { result = isValidServer("https://$host") } catch (e: Throwable) { thrown = e }
+        }, "small-stack", 256 * 1024)
+        t.start(); t.join()
+        thrown?.let { throw it }
+        assertEquals(false, result)
         assertFalse(isValidServer("https://" + "a".repeat(254) + ".com"))
+    }
+
+    @Test fun longestValidServerIsAccepted() {
+        // 253-character host of 63-character labels, the highest port and a slash: 268 characters.
+        val label = "a".repeat(63)
+        val host = listOf(label, label, label, "a".repeat(61)).joinToString(".")
+        assertEquals(253, host.length)
+        val server = "https://$host:65535/"
+        assertEquals(268, server.length)
+        assertTrue(isValidServer(server))
+        assertFalse("a 64-character label", isValidServer("https://" + "a".repeat(64) + ".com"))
     }
 
     @Test fun emulatorHttpOnlyWhereDebugBuildsAllowIt() {

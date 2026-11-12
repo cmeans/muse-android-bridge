@@ -25,8 +25,8 @@ fun isValidSlug(slug: String): Boolean =
  * the only plain-HTTP host src/debug's network config allows.
  */
 fun isValidServer(server: String, allowEmulatorHttp: Boolean = false): Boolean {
-    // A DNS name is at most 253 characters; checking the length first also keeps a
-    // very long input from overflowing the regex engine's stack.
+    // A DNS name is at most 253 characters, in labels of at most 63; checking the length
+    // first also keeps a very long input from overflowing the regex engine's stack.
     if (server.length > MAX_SERVER_LENGTH) return false
     val m = SERVER.matchEntire(server) ?: return false
     val (scheme, host, port) = m.destructured
@@ -39,7 +39,7 @@ fun isValidServer(server: String, allowEmulatorHttp: Boolean = false): Boolean {
 private const val MAX_SERVER_LENGTH = 8 + 253 + 6 + 1
 
 private val SERVER =
-    Regex("""(https?)://([a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*)(?::([0-9]{1,5}))?/?""")
+    Regex("""(https?)://([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*)(?::([0-9]{1,5}))?/?""")
 
 /** The channel a command topic belongs to, or null for any other topic (§5). */
 fun channelForTopic(topic: String, slug: String): Channel? =
