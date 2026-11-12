@@ -1,0 +1,5 @@
+# The Gradle wrapper scripts must keep their line endings on every OS:
+# a CRLF gradlew fails under WSL or Git Bash ("/usr/bin/env: 'sh\r'").
+gradlew        text eol=lf
+*.bat          text eol=crlf
+*.jar          binary
