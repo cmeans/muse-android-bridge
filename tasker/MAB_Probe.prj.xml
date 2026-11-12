@@ -73,7 +73,7 @@
 			<Str sr="arg6" ve="3"/>
 			<Str sr="arg7" ve="3">io.heckel.ntfy</Str>
 			<Str sr="arg8" ve="3"/>
-			<Int sr="arg9" val="0"/>
+			<Int sr="arg9" val="1"/>
 		</Action>
 	</Task>
 	<Task sr="task203">
@@ -93,7 +93,7 @@
 			<Str sr="arg6" ve="3"/>
 			<Str sr="arg7" ve="3">io.heckel.ntfy</Str>
 			<Str sr="arg8" ve="3"/>
-			<Int sr="arg9" val="0"/>
+			<Int sr="arg9" val="1"/>
 		</Action>
 	</Task>
 </TaskerData>
