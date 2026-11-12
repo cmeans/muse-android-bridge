@@ -74,9 +74,9 @@ class MainActivity : Activity() {
         root.addView(label("Server"))
         val server = field("server", "https://ntfy.example.com", "https://ntfy.intfar.com").also { root.addView(it) }
         root.addView(label("Device slug"))
-        val slug = field("slug", "chris-razr", "chris-razr").also { root.addView(it) }
+        val slug = field("slug", "e.g. peggy-pixel").also { root.addView(it) }
         root.addView(label("Phone username"))
-        val user = field("username", "chris-razr-phone").also { root.addView(it) }
+        val user = field("username", "e.g. peggy-pixel-phone").also { root.addView(it) }
 
         val creds = CredentialStore(this)
         root.addView(label("Phone password"))

@@ -14,6 +14,7 @@ import android.media.RingtoneManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.util.Base64
@@ -149,7 +150,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 } else {
                     Config.prefs(this).edit().putLong("last_connected", System.currentTimeMillis()).apply()
                     log("subscribed")
-                    val openedAt = System.currentTimeMillis()
+                    val openedAt = SystemClock.elapsedRealtime() // a duration: immune to clock changes
                     try {
                         c.inputStream.bufferedReader().use { reader ->
                             while (running) {
@@ -158,7 +159,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                             }
                         }
                     } finally {
-                        backoff.streamEnded(System.currentTimeMillis() - openedAt)
+                        backoff.streamEnded(SystemClock.elapsedRealtime() - openedAt)
                     }
                     if (running) log("stream ended")
                 }
@@ -340,10 +341,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 .build(),
         )
         thread(name = "mab-ring") {
-            val until = System.currentTimeMillis() + RING_MS
+            val until = SystemClock.elapsedRealtime() + RING_MS // a clock change can't stretch the ring
             var reason = "30 s elapsed"
             while (ringGeneration == gen) {
-                if (System.currentTimeMillis() >= until) break
+                if (SystemClock.elapsedRealtime() >= until) break
                 if (Config.stopAll(this)) { reason = "STOP all"; break }
                 if (channel == Channel.FAMILY && Config.stopFamily(this)) { reason = "STOP family"; break }
                 try { Thread.sleep(250) } catch (_: InterruptedException) { break }

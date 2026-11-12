@@ -140,9 +140,9 @@ On receiving a message, an executor MUST:
 1. Check freshness and dedup (§2.3). Every message on a command topic is
    recorded as seen here, stale or not and before any later check, so a
    copy redelivered after a STOP is lifted, or after the phone's clock is
-   corrected, cannot run, and a second copy gets no second receipt. A stale message is logged and gets a
-   `dropped-stale` receipt (§6); a duplicate is logged only, since the
-   first receipt stands.
+   corrected, cannot run, and a second copy gets no second receipt. A
+   stale message is logged and gets a `dropped-stale` receipt (§6); a
+   duplicate is logged only, since the first receipt stands.
 2. Match the body against the registry for that channel. No match → publish
    `err unknown-command` receipt, take no other action. Never attempt to
    interpret, complete, or "helpfully" parse a non-registry body.

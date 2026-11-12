@@ -14,7 +14,7 @@ object Config {
         prefs(ctx).getString("server", "https://ntfy.intfar.com")!!.trimEnd('/')
 
     fun deviceSlug(ctx: Context): String =
-        prefs(ctx).getString("slug", "chris-razr")!!
+        prefs(ctx).getString("slug", "")!!
 
     fun username(ctx: Context): String =
         prefs(ctx).getString("username", "")!!
