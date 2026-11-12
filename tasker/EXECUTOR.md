@@ -1,5 +1,18 @@
 # Tasker executor — build sheet (pilot: chris-razr)
 
+> **Peggy constraint (Chris, 2026-11-11, after working the pilot setup
+> himself):** "this is too much for Peggy." Correct — and by design she
+> never sees any of it. Everything in this sheet is helper-side work,
+> done by Chris/Michele, ideally in one in-person setup visit. Peggy's
+> entire surface is: open Muse, ask for help, tap Start service /
+> Start now when her Muse asks, and the STOP scenes. No imports, no
+> settings, no Tasker UI, ever. Corollary: her phone's configuration
+> must be treated as frozen once delivered — no design step may depend
+> on her re-importing, updating, or reconfiguring anything. This is
+> also the strongest argument yet for the native app on her device:
+> store install + self-update beats helper-maintained Tasker XML, so
+> the app-at-parity swap matters most for the Peggy phase, not the pilot.
+
 Build interactively on the phone (Tasker's UI generates valid project XML;
 hand-written XML is import-fragile). This sheet is the exact logic to enter,
 from PROTOCOL.md. Export the finished project to `tasker/` in this repo.
