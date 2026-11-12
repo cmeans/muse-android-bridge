@@ -1,8 +1,8 @@
 # Native app — development handoff path
 
-_Status: prepared 2026-11-11. Chris will hand implementation to
-claude-dev once the path below is understood and settled. This document
-is the map, not an instruction to start._
+_Status: prepared 2026-11-11 as the map; on 2026-11-12 Chris handed
+implementation to claude-dev, and PR #4 implements steps 1, 3 and 4
+below. Step 2 is implemented and awaits its long-run device evidence._
 
 ## Objective
 
@@ -38,7 +38,7 @@ the separate Phase 3 design is approved.
 - `PROTOCOL.md` is executor-agnostic; the app does not need a new wire
   design.
 
-## Current scaffold — treat as a spike, not a finished app
+## Current app — past the spike, not yet ready for family phones
 
 `app/android/` contains a Kotlin/Gradle scaffold written to make the
 shape concrete: manifest, configuration/registry, a foreground
@@ -53,8 +53,9 @@ which is a migration of its own rather than a version bump, so it waits
 for a PR of its own. AGP 8.13.2 is the last 8.x release. Kotlin stays
 on the 2.2 line, at its last patch (2.2.21), to keep this baseline's
 bump small while the executor work is stacked on it; 2.3 and 2.4 also
-build on this toolchain and can follow separately. It has **not** been
-run on a device. Muse's VM never completed an SDK install
+build on this toolchain and can follow separately. The executor (PR
+#4) has run on Chris's Razr+ since 2026-11-12; the device results are
+on PR #4. Muse's VM never completed an SDK install
 (`sdkmanager` downloads failed in its HTTP proxy tunnel), so builds run
 on the workstation. Claude-dev may retain, refactor, or replace the
 scaffold; the protocol and tests are the contract, not this code.
@@ -73,28 +74,32 @@ Known gaps before any family deployment (2026-11-12: the executor plan,
 credential storage, the verified registry, and unit tests for check order,
 TTL, dedup and malformed input; what follows is still open):
 
-- prove reconnect/backoff, Doze behavior, locked-phone behavior,
-  NordVPN behavior, and 48-hour battery cost;
+- prove reconnect/backoff over long runs (6 h and more), Doze, NordVPN,
+  and 48-hour battery cost (locking the phone passed on 2026-11-12, for
+  launches and rings; whether a locked phone shows a launched app like
+  Meet usefully is device test B2);
 - a reproducible signing setup (the Gradle wrapper is generated and
   pinned).
 
 ## Recommended implementation path
 
-1. **Build baseline.** The SDK/Gradle setup and a clean debug build
-   are done (2026-11-12). Next: tests around the protocol state machine,
-   before polishing UI.
-2. **Transport.** Implement the ntfy subscription as a foreground
-   service with reconnect/backoff. Decide from device evidence whether
-   a direct streaming connection is reliable enough on the Razr+ under
-   Doze and NordVPN; do not silently fall back to interpreting ntfy-app
+1. **Build baseline.** Done (2026-11-12): the SDK/Gradle setup, a clean
+   debug build, and unit tests around the protocol state machine.
+2. **Transport** (implemented in PR #4; long-run evidence pending).
+   Implement the ntfy subscription as a foreground service with
+   reconnect/backoff. Decide from device evidence whether a direct
+   streaming connection is reliable enough on the Razr+ under Doze and
+   NordVPN; do not silently fall back to interpreting ntfy-app
    notifications without recording that design change.
-3. **Executor.** Implement gates in protocol order, exact-match parsing,
-   receipts, and append-only local logging. A malformed or unknown
-   message must cause no action beyond an error receipt/log entry.
-4. **Owner surface.** Helper-oriented setup screen; large, unambiguous
-   STOP controls; STOP state persisted across reboot and service
-   restart. Peggy's delivered configuration is frozen: no workflow may
-   require her to import, update settings, or maintain the app.
+3. **Executor** (implemented in PR #4). Implement gates in protocol
+   order, exact-match parsing, receipts, and append-only local logging.
+   A malformed or unknown message must cause no action beyond an error
+   receipt/log entry.
+4. **Owner surface** (implemented in PR #4). Helper-oriented setup
+   screen; large, unambiguous STOP controls; STOP state persisted
+   across reboot and service restart. Peggy's delivered configuration
+   is frozen: no workflow may require her to import, update settings,
+   or maintain the app.
 5. **Signing and distribution.** Use a debug/sideload build only for
    Chris's pilot phone. Before Michele/Peggy rollout, settle release
    signing, update delivery, and whether Play internal testing is worth

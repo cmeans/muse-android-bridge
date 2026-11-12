@@ -61,9 +61,9 @@ registry launch, announce, ack, STOP UI — tested on the pilot phone
 first, same rollout order (Chris → Michele → Peggy). Chris will hand
 implementation to claude-dev once the path is understood; the map,
 current scaffold status, open decisions, and acceptance boundary are
-in `app/DEV-HANDOFF.md`. The scaffold under `app/android/` is a spike,
-not a finished app: it builds (since 2026-11-12) but hasn't run on a
-device.
+in `app/DEV-HANDOFF.md`. The app under `app/android/` builds (since
+2026-11-12) and has passed its first device tests on the pilot phone;
+it isn't ready for family phones yet.
 
 Remote: `cmeans/muse-android-bridge` (private). This VM cannot push over
 git SSH/HTTPS (egress resets SSH), so history is published as one
