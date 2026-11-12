@@ -301,14 +301,16 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         val start = beginRing(channel) ?: return false
         if (start.alreadyRinging) return true
         val deadline = SystemClock.elapsedRealtime() + PLAY_CHECK_MS
-        while (!start.rt.isPlaying && SystemClock.elapsedRealtime() < deadline) Thread.sleep(50)
-        synchronized(this) {
-            if (ringGeneration == start.gen && !start.rt.isPlaying) {
-                stopRinging("no sound started")
-                return false
-            }
+        var sawPlaying = start.rt.isPlaying
+        while (!sawPlaying && ringGeneration == start.gen && SystemClock.elapsedRealtime() < deadline) {
+            Thread.sleep(50)
+            sawPlaying = start.rt.isPlaying
         }
-        return true
+        if (sawPlaying) return true
+        // Never reported playing: stop it if it's still this ring, and send `failed`
+        // either way, even if Stop ringing ended it during the check.
+        synchronized(this) { if (ringGeneration == start.gen) stopRinging("no sound started") }
+        return false
     }
 
     private class RingStart(val rt: Ringtone, val gen: Int, val alreadyRinging: Boolean = false)

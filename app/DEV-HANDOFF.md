@@ -54,7 +54,7 @@ for a PR of its own. AGP 8.13.2 is the last 8.x release. Kotlin stays
 on the 2.2 line, at its last patch (2.2.21), to keep this baseline's
 bump small while the executor work is stacked on it; 2.3 and 2.4 also
 build on this toolchain and can follow separately. The executor (PR
-#4) has run on Chris's Razr+ since 2026-11-12; the device results are
+#4) has run on the pilot phone since 2026-11-12; the device results are
 on PR #4. Muse's VM never completed an SDK install
 (`sdkmanager` downloads failed in its HTTP proxy tunnel), so builds run
 on the workstation. Claude-dev may retain, refactor, or replace the
@@ -88,7 +88,7 @@ TTL, dedup and malformed input; what follows is still open):
 2. **Transport** (implemented in PR #4; long-run evidence pending).
    Implement the ntfy subscription as a foreground service with
    reconnect/backoff. Decide from device evidence whether a direct
-   streaming connection is reliable enough on the Razr+ under Doze and
+   streaming connection is reliable enough on the pilot phone under Doze and
    NordVPN; do not silently fall back to interpreting ntfy-app
    notifications without recording that design change.
 3. **Executor** (implemented in PR #4). Implement gates in protocol
@@ -106,7 +106,7 @@ TTL, dedup and malformed input; what follows is still open):
    its account/process overhead. An update must never change the app's
    signing identity unexpectedly.
 6. **Device gates.** Run the app equivalents of test groups A and B on
-   the Razr+: delivery latency/reliability, VPN, stale replay, dedup,
+   the pilot phone: delivery latency/reliability, VPN, stale replay, dedup,
    locked phone, STOP persistence, malformed-input safety, and battery.
    targetSdk 36 opts the app into Android 16's behavior changes, on
    top of Android 15's, which already applied at targetSdk 35 (such as

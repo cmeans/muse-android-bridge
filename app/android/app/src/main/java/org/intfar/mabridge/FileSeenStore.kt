@@ -72,6 +72,9 @@ class FileSeenStore(
 
     private fun append(id: String, ts: Long) {
         val text = (if (tornTail) "\n" else "") + line(id, ts)
+        // A write that fails part-way leaves a cut-off line: until one succeeds, the
+        // next append starts on a fresh line.
+        tornTail = true
         FileOutputStream(file, true).use { it.write(text.toByteArray(Charsets.UTF_8)) }
         tornTail = false
         linesInFile++

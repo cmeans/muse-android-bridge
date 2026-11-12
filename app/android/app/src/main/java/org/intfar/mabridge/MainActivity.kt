@@ -79,12 +79,12 @@ class MainActivity : Activity() {
         fun helper(text: String) = label(text, 13f).apply { setPadding(0, 0, 0, pad) }
         root.addView(label("Server address"))
         val server = field("server", "https://ntfy.example.com").also { root.addView(it) }
-        root.addView(helper("The bridge's ntfy server, from the person who set it up. Starts with https://."))
+        root.addView(helper("The bridge's ntfy server, from whoever runs it. Starts with https://."))
         root.addView(label("Device name"))
-        val slug = field("slug", "name-phone").also { root.addView(it) }
+        val slug = field("slug", "name-device").also { root.addView(it) }
         root.addView(helper("The name this phone was given on the server. Lowercase letters, digits and hyphens. Example: alex-pixel"))
         root.addView(label("Phone username"))
-        val user = field("username", "name-phone-phone").also { root.addView(it) }
+        val user = field("username", "name-device-phone").also { root.addView(it) }
         root.addView(helper("Usually the device name followed by -phone. Filled in for you when it's empty."))
         // PROTOCOL §3 names the phone's user <device>-phone, so offer that once the
         // device name is typed, without overwriting anything the helper entered.
@@ -111,11 +111,14 @@ class MainActivity : Activity() {
                     setupResult.text = "Not saved: the server address must be https:// and a host name, optionally with :port, and nothing after it. Example: https://ntfy.example.com"
                     return@setOnClickListener
                 }
-                val slugText = slug.text.toString().trim()
+                val slugText = slug.text.toString().trim().lowercase()
                 if (!isValidSlug(slugText)) {
                     setupResult.text = "Not saved: the device name must be lowercase letters and digits, joined by single hyphens. Example: alex-pixel"
                     return@setOnClickListener
                 }
+                // The helper line promises the <device>-phone default: apply it here too,
+                // since tapping Save doesn't take focus from the device name field.
+                if (user.text.isBlank()) user.setText("$slugText-phone")
                 prefs.edit()
                     .putString("server", serverText)
                     .putString("slug", slugText)
@@ -139,7 +142,7 @@ class MainActivity : Activity() {
             setOnClickListener {
                 val missing = Config.missingSetup(this@MainActivity)
                 if (missing.isNotEmpty()) {
-                    setupResult.text = "Can't start: missing or invalid ${missing.joinToString(", ")}."
+                    setupResult.text = "Can't start: missing or invalid ${missing.joinToString(", ")}. If you just typed them, tap Save setup first."
                     return@setOnClickListener
                 }
                 requestNotificationPermission()

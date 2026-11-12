@@ -82,6 +82,13 @@ class FileSeenStoreTest {
         assertFalse("b lost", s.markIfNew("b", t + 3))
     }
 
+    @Test fun wellFormedFileGetsNoExtraNewline() {
+        val f = File(tmp.root, "seen_ids.txt")
+        f.writeText("YQ $t\n")
+        FileSeenStore(f).markIfNew("b", t + 2)
+        assertEquals(listOf("YQ $t", "Yg ${t + 2}"), f.readLines())
+    }
+
     @Test fun expiredEntriesAreCompactedAway() {
         val f = File(tmp.root, "seen_ids.txt")
         val s = FileSeenStore(f)
