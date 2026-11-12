@@ -68,17 +68,30 @@ class MainActivity : Activity() {
 
         // ---- setup (for the helper) ----
         root.addView(label("Setup", 18f, bold = true).apply { setPadding(0, pad * 2, 0, 0) })
-        fun field(key: String, hint: String, default: String = "") = EditText(this).apply {
+        fun field(key: String, hint: String) = EditText(this).apply {
             this.hint = hint
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            setText(prefs.getString(key, default) ?: default)
+            setText(prefs.getString(key, "") ?: "")
         }
-        root.addView(label("Server"))
-        val server = field("server", "https://ntfy.example.com", "https://ntfy.intfar.com").also { root.addView(it) }
-        root.addView(label("Device slug"))
-        val slug = field("slug", "e.g. peggy-phone").also { root.addView(it) }
+        // A visible label above each field and a helper line below it: the hint
+        // inside the field disappears as soon as someone types, so it only shows
+        // the pattern, and the helper line carries the instructions.
+        fun helper(text: String) = label(text, 13f).apply { setPadding(0, 0, 0, pad) }
+        root.addView(label("Server address"))
+        val server = field("server", "https://ntfy.example.com").also { root.addView(it) }
+        root.addView(helper("The bridge's ntfy server, from the person who set it up. Starts with https://."))
+        root.addView(label("Device name"))
+        val slug = field("slug", "name-phone").also { root.addView(it) }
+        root.addView(helper("The name this phone was given on the server. Lowercase letters, digits and hyphens. Example: alex-pixel"))
         root.addView(label("Phone username"))
-        val user = field("username", "e.g. peggy-phone-phone").also { root.addView(it) }
+        val user = field("username", "name-phone-phone").also { root.addView(it) }
+        root.addView(helper("Usually the device name followed by -phone. Filled in for you when it's empty."))
+        // PROTOCOL §3 names the phone's user <device>-phone, so offer that once the
+        // device name is typed, without overwriting anything the helper entered.
+        slug.setOnFocusChangeListener { _, hasFocus ->
+            val typed = slug.text.toString().trim()
+            if (!hasFocus && user.text.isBlank() && isValidSlug(typed)) user.setText("$typed-phone")
+        }
 
         val creds = CredentialStore(this)
         root.addView(label("Phone password"))
@@ -93,14 +106,14 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "Save setup"
             setOnClickListener {
-                val serverText = server.text.toString().trim()
-                if (!isValidServer(serverText)) {
-                    setupResult.text = "Not saved: the server must be https:// and a host name, with nothing after it (like https://ntfy.example.com)."
+                val serverText = server.text.toString().trim().lowercase()
+                if (!isValidServer(serverText, Config.isDebugBuild(this@MainActivity))) {
+                    setupResult.text = "Not saved: the server address must be https:// and a host name, optionally with :port, and nothing after it. Example: https://ntfy.example.com"
                     return@setOnClickListener
                 }
                 val slugText = slug.text.toString().trim()
                 if (!isValidSlug(slugText)) {
-                    setupResult.text = "Not saved: the device slug must be lowercase letters, digits and single hyphens (like peggy-phone)."
+                    setupResult.text = "Not saved: the device name must be lowercase letters and digits, joined by single hyphens. Example: alex-pixel"
                     return@setOnClickListener
                 }
                 prefs.edit()
@@ -126,7 +139,7 @@ class MainActivity : Activity() {
             setOnClickListener {
                 val missing = Config.missingSetup(this@MainActivity)
                 if (missing.isNotEmpty()) {
-                    setupResult.text = "Can't start: missing ${missing.joinToString(", ")}."
+                    setupResult.text = "Can't start: missing or invalid ${missing.joinToString(", ")}."
                     return@setOnClickListener
                 }
                 requestNotificationPermission()

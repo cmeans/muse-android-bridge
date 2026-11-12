@@ -4,6 +4,7 @@ import org.intfar.mabridge.protocol.SeenStore
 import org.intfar.mabridge.protocol.pruneSeen
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.util.Base64
 
 /**
@@ -27,6 +28,8 @@ class FileSeenStore(
 ) : SeenStore {
     private val seen = HashMap<String, Long>()
     private var linesInFile = 0
+    /** The file's last line was cut off (a killed process, a full disk): end it before appending. */
+    private var tornTail = false
 
     init {
         try {
@@ -43,6 +46,7 @@ class FileSeenStore(
                     }
                     seen[id] = maxOf(ts, seen[id] ?: ts)
                 }
+                tornTail = endsWithoutNewline(file)
             }
         } catch (e: Exception) {
             seen.clear()
@@ -67,9 +71,14 @@ class FileSeenStore(
     private fun line(id: String, ts: Long) = "${ENCODER.encodeToString(id.toByteArray(Charsets.UTF_8))} $ts\n"
 
     private fun append(id: String, ts: Long) {
-        FileOutputStream(file, true).use { it.write(line(id, ts).toByteArray(Charsets.UTF_8)) }
+        val text = (if (tornTail) "\n" else "") + line(id, ts)
+        FileOutputStream(file, true).use { it.write(text.toByteArray(Charsets.UTF_8)) }
+        tornTail = false
         linesInFile++
     }
+
+    private fun endsWithoutNewline(f: File): Boolean =
+        f.length() > 0 && RandomAccessFile(f, "r").use { it.seek(f.length() - 1); it.read() != '\n'.code }
 
     private fun compact() {
         val tmp = File(file.parentFile, file.name + ".tmp")
@@ -79,6 +88,7 @@ class FileSeenStore(
             if (!tmp.renameTo(file)) throw java.io.IOException("rename failed")
         }
         linesInFile = seen.size
+        tornTail = false
     }
 
     private companion object {

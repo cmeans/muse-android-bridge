@@ -292,17 +292,37 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
      * or (for a family ring) STOP family. False if the phone has no sound to play.
      * A `ring find` while one is ringing keeps the current ring and its end time,
      * so a publisher repeating the command can't keep the phone ringing.
-     * True only once a sound is actually playing.
+     * True only once the ringtone player reports playing, which is as close to
+     * "audible" as the app can check (Do Not Disturb or OEM audio policy may
+     * still silence it). The play check waits outside the service's lock, so a
+     * Stop ringing tap isn't held up by it.
      */
-    @Synchronized
     private fun startRing(channel: Channel): Boolean {
-        if (ringtone != null) {
+        val start = beginRing(channel) ?: return false
+        if (start.alreadyRinging) return true
+        val deadline = SystemClock.elapsedRealtime() + PLAY_CHECK_MS
+        while (!start.rt.isPlaying && SystemClock.elapsedRealtime() < deadline) Thread.sleep(50)
+        synchronized(this) {
+            if (ringGeneration == start.gen && !start.rt.isPlaying) {
+                stopRinging("no sound started")
+                return false
+            }
+        }
+        return true
+    }
+
+    private class RingStart(val rt: Ringtone, val gen: Int, val alreadyRinging: Boolean = false)
+
+    /** Sets up and plays a ring, or reports the one already ringing; null if there's no sound to play. */
+    @Synchronized
+    private fun beginRing(channel: Channel): RingStart? {
+        ringtone?.let { current ->
             log("ring find: already ringing; the current ring keeps its end time")
-            return true
+            return RingStart(current, ringGeneration, alreadyRinging = true)
         }
         val rt = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
             ?: RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
-            ?: return false
+            ?: return null
         rt.audioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_ALARM)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
@@ -324,14 +344,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             stopRinging("error")
             throw e
         }
-        // `ok ring find` only once a sound is really playing (PROTOCOL §6).
-        val deadline = SystemClock.elapsedRealtime() + PLAY_CHECK_MS
-        while (!rt.isPlaying && SystemClock.elapsedRealtime() < deadline) Thread.sleep(50)
-        if (!rt.isPlaying) {
-            stopRinging("no sound started")
-            return false
-        }
-        return true
+        return RingStart(rt, gen)
     }
 
     /** Posts Stop ringing, starts the watcher that ends the ring, then plays: in that order. */

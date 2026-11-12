@@ -53,8 +53,8 @@ class FileSeenStoreTest {
         val f = tmp.newFolder("seen_ids.txt") // a directory where the file should be
         var errors = 0
         val s = FileSeenStore(f, onError = { errors++ })
+        assertEquals("the failed read is reported", 1, errors)
         assertTrue(s.markIfNew("a", t))
-        assertTrue(errors >= 1)
     }
 
     @Test fun newIdAppendsOneLineInsteadOfRewriting() {
@@ -64,6 +64,22 @@ class FileSeenStoreTest {
         assertEquals(50, f.readLines().size)
         // Appending kept the earlier lines: id1 still dedups after a restart.
         assertFalse(FileSeenStore(f).markIfNew("id1", t + 100))
+    }
+
+    @Test fun appendKeepsExistingBytes() {
+        val f = File(tmp.root, "seen_ids.txt")
+        f.writeText("marker-line\n") // a line a rewrite would drop
+        FileSeenStore(f).markIfNew("a", t)
+        assertTrue(f.readText().startsWith("marker-line\n"))
+    }
+
+    @Test fun tornLastLineDoesNotSwallowTheNextId() {
+        val f = File(tmp.root, "seen_ids.txt")
+        f.writeText("YQ $t") // base64url("a"), cut off before its newline
+        FileSeenStore(f).markIfNew("b", t + 2)
+        val s = FileSeenStore(f)
+        assertFalse("a lost", s.markIfNew("a", t + 3))
+        assertFalse("b lost", s.markIfNew("b", t + 3))
     }
 
     @Test fun expiredEntriesAreCompactedAway() {

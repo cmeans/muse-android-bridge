@@ -17,14 +17,22 @@ fun isValidSlug(slug: String): Boolean =
     slug.length <= 40 && Regex("[a-z0-9]+(-[a-z0-9]+)*").matches(slug)
 
 /**
- * An ntfy server the bridge can subscribe to: `https://` plus a host (and an
- * optional port), with nothing after it but an optional `/`. Release builds are
- * HTTPS only, and a path, query or user part would be glued in front of the
- * topic list in the subscribe URL.
+ * An ntfy server the bridge can subscribe to: `https://` plus a lowercase host
+ * and an optional port (1-65535), with nothing after it but an optional `/`.
+ * Release builds are HTTPS only, and a path, query or user part would be glued
+ * in front of the topic list in the subscribe URL. With [allowEmulatorHttp]
+ * (debug builds), `http://10.0.2.2` with an optional port is also accepted:
+ * the only plain-HTTP host src/debug's network config allows.
  */
-fun isValidServer(server: String): Boolean =
-    Regex("""https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?/?""")
-        .matches(server)
+fun isValidServer(server: String, allowEmulatorHttp: Boolean = false): Boolean {
+    val m = SERVER.matchEntire(server) ?: return false
+    val (scheme, host, port) = m.destructured
+    if (port.isNotEmpty() && port.toInt() !in 1..65535) return false
+    return scheme == "https" || (allowEmulatorHttp && scheme == "http" && host == "10.0.2.2")
+}
+
+private val SERVER =
+    Regex("""(https?)://([a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*)(?::([0-9]{1,5}))?/?""")
 
 /** The channel a command topic belongs to, or null for any other topic (§5). */
 fun channelForTopic(topic: String, slug: String): Channel? =
