@@ -1,58 +1,59 @@
-<?xml version='1.0' encoding='utf-8'?>
 <TaskerData sr="" dvi="1" tv="6.4.15">
-  <Profile sr="prof101" ve="2">
-    <cdate>1794442646372</cdate>
-    <edate>1794442646372</edate>
-    <flags>40</flags>
-    <id>101</id>
-    <mid0>201</mid0>
-    <nme>MAB Probe - ntfy broadcast</nme>
-    <Event>
-      <code>599</code>
-      <pri>0</pri>
-      <Str sr="arg0" ve="3">io.heckel.ntfy.MESSAGE_RECEIVED</Str>
-      <Int sr="arg1" val="0" />
-      <Int sr="arg2" val="0" />
-      <Str sr="arg3" ve="3" />
-      <Str sr="arg4" ve="3" />
-    </Event>
-  </Profile>
-  <Project sr="proj0" ve="2">
-    <cdate>1794442646372</cdate>
-    <id>6d61622d70726f62652d3031</id>
-    <name>MAB Probe</name>
-    <pids>101</pids>
-    <tids>201</tids>
-  </Project>
-  <Task sr="task201">
-    <cdate>1794442665029</cdate>
-    <edate>1794442665029</edate>
-    <id>201</id>
-    <Action sr="act0" ve="7">
-      <code>548</code>
-      <Str sr="arg0" ve="3">NTFY topic=%topic msg=%message</Str>
-      <Int sr="arg1" val="1" />
-      <Int sr="arg2" val="1" />
-      <Str sr="arg3" ve="3" />
-      <Str sr="arg4" ve="3" />
-      <Str sr="arg5" ve="3" />
-      <Str sr="arg6" ve="3" />
-      <Str sr="arg7" ve="3" />
-      <Str sr="arg8" ve="3" />
-      <Int sr="arg9" val="1" />
-      <Str sr="arg10" ve="3" />
-      <Int sr="arg11" val="1" />
-      <Int sr="arg12" val="0" />
-      <Str sr="arg13" ve="3" />
-      <Int sr="arg14" val="0" />
-      <Str sr="arg15" ve="3" />
-    </Action>
-    <Action sr="act1" ve="7">
-      <code>410</code>
-      <Str sr="arg0" ve="3">Tasker/mab/probe.txt</Str>
-      <Str sr="arg1" ve="3">topic=%topic time=%time msg=%message muted=%muted</Str>
-      <Int sr="arg2" val="1" />
-      <Int sr="arg3" val="1" />
-    </Action>
-  </Task>
+	<Profile sr="prof101" ve="2">
+		<cdate>1794442646372</cdate>
+		<edate>1794442646372</edate>
+		<flags>40</flags>
+		<id>101</id>
+		<mid0>201</mid0>
+		<nme>MAB Probe - ntfy broadcast</nme>
+		<EventCat sr="con0" ve="2">
+			<code>599</code>
+			<pri>0</pri>
+			<Str sr="arg0" ve="3">io.heckel.ntfy.MESSAGE_RECEIVED</Str>
+			<Int sr="arg1" val="0"/>
+			<Int sr="arg2" val="0"/>
+			<Str sr="arg3" ve="3"/>
+			<Str sr="arg4" ve="3"/>
+		</EventCat>
+	</Profile>
+	<Project sr="proj0" ve="2">
+		<cdate>1794442646372</cdate>
+		<id>1794442646372</id>
+		<name>MAB Probe</name>
+		<pids>101</pids>
+		<tids>201</tids>
+	</Project>
+	<Task sr="task201">
+		<cdate>1794442646372</cdate>
+		<edate>1794442646372</edate>
+		<id>201</id>
+		<nme>MAB Probe Task</nme>
+		<pri>100</pri>
+		<Action sr="act0" ve="7">
+			<code>548</code>
+			<Str sr="arg0" ve="3">NTFY topic=%topic msg=%message</Str>
+			<Int sr="arg1" val="1"/>
+			<Int sr="arg2" val="1"/>
+			<Str sr="arg3" ve="3"/>
+			<Str sr="arg4" ve="3"/>
+			<Str sr="arg5" ve="3"/>
+			<Str sr="arg6" ve="3"/>
+			<Str sr="arg7" ve="3"/>
+			<Str sr="arg8" ve="3"/>
+			<Int sr="arg9" val="1"/>
+			<Str sr="arg10" ve="3"/>
+			<Int sr="arg11" val="1"/>
+			<Int sr="arg12" val="0"/>
+			<Str sr="arg13" ve="3"/>
+			<Int sr="arg14" val="0"/>
+			<Str sr="arg15" ve="3"/>
+		</Action>
+		<Action sr="act1" ve="7">
+			<code>410</code>
+			<Str sr="arg0" ve="3">Tasker/mab/probe.txt</Str>
+			<Str sr="arg1" ve="3">topic=%topic time=%time msg=%message muted=%muted</Str>
+			<Int sr="arg2" val="1"/>
+			<Int sr="arg3" val="1"/>
+		</Action>
+	</Task>
 </TaskerData>
