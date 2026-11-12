@@ -56,13 +56,13 @@ class CommandTest {
     }
 
     @Test fun topicMustMatchExactly() {
-        assertNull(channelForTopic("mab-chris-razr-owner-x", "chris-razr"))
-        assertNull(channelForTopic("mab-chris-razr-owne", "chris-razr"))
-        assertNull(channelForTopic("xmab-chris-razr-family", "chris-razr"))
+        assertNull(channelForTopic("mab-test-phone-owner-x", "test-phone"))
+        assertNull(channelForTopic("mab-test-phone-owne", "test-phone"))
+        assertNull(channelForTopic("xmab-test-phone-family", "test-phone"))
     }
 
     @Test fun pilotRegistryMatchesVerifiedPackages() {
-        // Verified on chris-razr over adb, 2026-11-12.
+        // Verified on the pilot phone over adb, 2026-11-12.
         assertEquals(
             mapOf(
                 "meet" to App("Meet", "com.google.android.apps.tachyon"),
@@ -77,11 +77,11 @@ class CommandTest {
     }
 
     @Test fun topicsPerChannel() {
-        assertEquals("mab-chris-razr-owner", OWNER.topic("chris-razr"))
-        assertEquals("mab-chris-razr-family", FAMILY.topic("chris-razr"))
-        assertEquals(OWNER, channelForTopic("mab-chris-razr-owner", "chris-razr"))
-        assertEquals(FAMILY, channelForTopic("mab-chris-razr-family", "chris-razr"))
-        assertNull(channelForTopic("mab-chris-razr-ack", "chris-razr"))
-        assertNull(channelForTopic("mab-other-owner", "chris-razr"))
+        assertEquals("mab-test-phone-owner", OWNER.topic("test-phone"))
+        assertEquals("mab-test-phone-family", FAMILY.topic("test-phone"))
+        assertEquals(OWNER, channelForTopic("mab-test-phone-owner", "test-phone"))
+        assertEquals(FAMILY, channelForTopic("mab-test-phone-family", "test-phone"))
+        assertNull(channelForTopic("mab-test-phone-ack", "test-phone"))
+        assertNull(channelForTopic("mab-other-owner", "test-phone"))
     }
 }

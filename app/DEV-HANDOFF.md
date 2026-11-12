@@ -97,9 +97,9 @@ TTL, dedup and malformed input; what follows is still open):
    receipt/log entry.
 4. **Owner surface** (implemented in PR #4). Helper-oriented setup
    screen; large, unambiguous STOP controls; STOP state persisted
-   across reboot and service restart. Peggy's delivered configuration
-   is frozen: no workflow may require her to import, update settings,
-   or maintain the app.
+   across reboot and service restart. The phone owner's delivered
+   configuration is frozen: no workflow may require them to import,
+   update settings, or maintain the app.
 5. **Signing and distribution.** Use a debug/sideload build only for
    Chris's pilot phone. Before Michele/Peggy rollout, settle release
    signing, update delivery, and whether Play internal testing is worth

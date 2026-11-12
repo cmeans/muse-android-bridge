@@ -11,17 +11,17 @@ class GateTest {
     private val day = 24L * 60 * 60 * 1000
     private var clock = t
     private var stop = StopState(all = false, family = false)
-    private val gate = Gate("chris-razr", PILOT_REGISTRY, InMemorySeenStore(), { clock }, { stop })
+    private val gate = Gate("test-phone", PILOT_REGISTRY, InMemorySeenStore(), { clock }, { stop })
 
     private var nextId = 0
     private fun msg(
         body: String,
-        topic: String = "mab-chris-razr-family",
+        topic: String = "mab-test-phone-family",
         timeSec: Long = nowSec,
         id: String = "id${nextId++}",
     ) = IncomingMessage(id = id, timeSec = timeSec, topic = topic, body = body)
 
-    private val owner = "mab-chris-razr-owner"
+    private val owner = "mab-test-phone-owner"
 
     @Test fun staleByAge() {
         val d = gate.decide(msg("launch meet", timeSec = nowSec - 121))
@@ -134,7 +134,7 @@ class GateTest {
     }
 
     @Test fun wrongTopicIgnored() {
-        assertTrue(gate.decide(msg("launch meet", topic = "mab-chris-razr-ack")) is Decision.Ignore)
+        assertTrue(gate.decide(msg("launch meet", topic = "mab-test-phone-ack")) is Decision.Ignore)
         assertTrue(gate.decide(msg("launch meet", topic = "mab-other-owner")) is Decision.Ignore)
     }
 

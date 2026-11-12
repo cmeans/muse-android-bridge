@@ -125,11 +125,11 @@ software is an owner-channel-only act.
 
 | `<app>` | Android package | Notes |
 |---|---|---|
-| `meet` | `com.google.android.apps.tachyon` | Verified on chris-razr 2026-11-12 (Google Meet; `…apps.meetings` is not installed there) |
+| `meet` | `com.google.android.apps.tachyon` | Verified on the pilot phone 2026-11-12 (Google Meet; `…apps.meetings` is not installed there) |
 | `whatsapp` | `com.whatsapp` | |
 | `facebook` | `com.facebook.katana` | |
 | `chrome` | `com.android.chrome` | |
-| `muse` | `com.facebook.aura` | "Muse from Meta"; verified on chris-razr 2026-11-12 (launcher `.main.AuraMainActivity`) |
+| `muse` | `com.facebook.aura` | "Muse from Meta"; verified on the pilot phone 2026-11-12 (launcher `.main.AuraMainActivity`) |
 | `rustdesk` | `com.carriez.flutter_hbb` | Present only where RustDesk is deployed |
 
 Package names are verified against the actual phone at provisioning and
