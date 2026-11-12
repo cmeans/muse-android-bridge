@@ -47,7 +47,24 @@ class MainActivity : Activity() {
         root.addView(label("Phone username"))
         root.addView(field("username", "chris-razr-phone"))
         root.addView(label("Phone password"))
-        root.addView(field("password", "password", password = true))
+        val creds = CredentialStore(this)
+        val pwStatus = label(if (creds.isSet()) "Password saved" else "No password saved")
+        // Write-only: the field starts empty and the saved value is never shown.
+        val pwField = EditText(this).apply { hint = "password"; inputType = 129 }
+        root.addView(pwField)
+        root.addView(Button(this).apply {
+            text = "Save password"
+            setOnClickListener {
+                val pw = CharArray(pwField.text.length).also { pwField.text.getChars(0, it.size, it, 0) }
+                if (pw.isNotEmpty()) {
+                    creds.save(pw)
+                    pw.fill('\u0000')
+                    pwField.text.clear()
+                    pwStatus.text = "Password saved"
+                }
+            }
+        })
+        root.addView(pwStatus)
 
         val startBtn = Button(this).apply {
             text = "Start bridge"

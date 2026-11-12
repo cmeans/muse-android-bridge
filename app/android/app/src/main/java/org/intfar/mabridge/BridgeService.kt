@@ -101,7 +101,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun basicAuth(): String {
-        val raw = "${Config.username(this)}:${Config.password(this)}"
+        val pw = CredentialStore(this).load() ?: CharArray(0)
+        val raw = "${Config.username(this)}:${String(pw)}"
+        pw.fill('\u0000')
         return "Basic " + Base64.encodeToString(raw.toByteArray(), Base64.NO_WRAP)
     }
 

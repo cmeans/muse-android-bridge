@@ -19,12 +19,6 @@ object Config {
     fun username(ctx: Context): String =
         prefs(ctx).getString("username", "")!!
 
-    // Pilot note: stored in plain SharedPreferences. The credential is the
-    // scope-limited phone user (read two topics, write ack only; verified
-    // in test F2). Encrypted storage is a v1.1 hardening item.
-    fun password(ctx: Context): String =
-        prefs(ctx).getString("password", "")!!
-
     fun ownerTopic(ctx: Context) = "mab-${deviceSlug(ctx)}-owner"
     fun familyTopic(ctx: Context) = "mab-${deviceSlug(ctx)}-family"
     fun ackTopic(ctx: Context) = "mab-${deviceSlug(ctx)}-ack"
