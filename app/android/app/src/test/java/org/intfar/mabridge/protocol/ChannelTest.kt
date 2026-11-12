@@ -33,6 +33,13 @@ class ChannelTest {
         }
     }
 
+    @Test fun overlongServerIsRejectedWithoutThrowing() {
+        // A long dotted host overflowed the regex engine's stack (QA round 2 on #4).
+        val host = (1..1700).joinToString(".") { "a" } // about 3400 characters
+        assertFalse(isValidServer("https://$host"))
+        assertFalse(isValidServer("https://" + "a".repeat(254) + ".com"))
+    }
+
     @Test fun emulatorHttpOnlyWhereDebugBuildsAllowIt() {
         // src/debug's network config allows plain HTTP to 10.0.2.2 (the emulator's host) only.
         assertTrue(isValidServer("http://10.0.2.2:8081", allowEmulatorHttp = true))

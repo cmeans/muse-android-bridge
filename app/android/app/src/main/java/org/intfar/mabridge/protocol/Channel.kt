@@ -25,11 +25,18 @@ fun isValidSlug(slug: String): Boolean =
  * the only plain-HTTP host src/debug's network config allows.
  */
 fun isValidServer(server: String, allowEmulatorHttp: Boolean = false): Boolean {
+    // A DNS name is at most 253 characters; checking the length first also keeps a
+    // very long input from overflowing the regex engine's stack.
+    if (server.length > MAX_SERVER_LENGTH) return false
     val m = SERVER.matchEntire(server) ?: return false
     val (scheme, host, port) = m.destructured
+    if (host.length > 253) return false
     if (port.isNotEmpty() && port.toInt() !in 1..65535) return false
     return scheme == "https" || (allowEmulatorHttp && scheme == "http" && host == "10.0.2.2")
 }
+
+/** `https://`, a 253-character host, `:65535` and a final `/`. */
+private const val MAX_SERVER_LENGTH = 8 + 253 + 6 + 1
 
 private val SERVER =
     Regex("""(https?)://([a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*)(?::([0-9]{1,5}))?/?""")
