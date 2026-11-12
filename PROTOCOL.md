@@ -4,8 +4,8 @@
 pilot phone (§4.3), fixes the receipt list (§6), and states that a channel
 disabled by STOP still marks a message as seen (§5); Chris approved those on
 2026-11-12. The `cannot-announce` and `failed` receipts (§6) and the
-cache catch-up note (§2.3) came from review on the same day and await his
-review on the PR. 0.1: 2026-11-11.
+cache catch-up note (§2.3) came from review on the same day, and Chris
+approved them on the PR later that day. 0.1: 2026-11-11.
 **Status:** Phase 0 deliverable. This document is the contract. The Tasker pilot
 and the native app are interchangeable executors of this protocol; neither may
 extend it unilaterally.
