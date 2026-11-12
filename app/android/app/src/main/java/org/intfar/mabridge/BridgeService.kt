@@ -81,6 +81,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         }
         if (!running) {
             running = true
+            Config.prefs(this).edit().putBoolean("service_running", true).apply()
             thread(name = "mab-subscribe") { subscribeLoop() }
             log("service started")
         }
@@ -89,6 +90,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         running = false
+        Config.prefs(this).edit().putBoolean("service_running", false).apply()
         conn?.disconnect()
         stopRinging()
         tts?.shutdown()
@@ -174,7 +176,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                     log("not-installed ($name): ${command.text}")
                     return
                 }
-                if (Build.VERSION.SDK_INT >= 29 && !Settings.canDrawOverlays(this)) {
+                if (!Settings.canDrawOverlays(this)) {
                     // Android blocks activity starts from the background without it.
                     log("warning: 'Display over other apps' is off; the launch may be blocked")
                 }

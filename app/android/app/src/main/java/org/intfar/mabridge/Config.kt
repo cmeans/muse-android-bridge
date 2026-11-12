@@ -26,4 +26,12 @@ object Config {
     fun stopAll(ctx: Context) = prefs(ctx).getBoolean("stop_all", false)
     fun stopFamily(ctx: Context) = prefs(ctx).getBoolean("stop_family", false)
 
+    /** Setup fields still empty; the service doesn't start until this is empty. */
+    fun missingSetup(ctx: Context): List<String> = buildList {
+        if (server(ctx).isBlank()) add("server")
+        if (deviceSlug(ctx).isBlank()) add("device slug")
+        if (username(ctx).isBlank()) add("username")
+        if (!CredentialStore(ctx).isSet()) add("password")
+    }
+
 }

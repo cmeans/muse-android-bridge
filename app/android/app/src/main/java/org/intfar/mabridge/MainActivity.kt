@@ -4,10 +4,12 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.InputType
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -15,121 +17,162 @@ import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * Owner surface: connection setup (helper-performed), service start/stop,
- * the two STOP switches, and the recent log. Deliberately plain — this
- * screen is for the setup helper, not for daily use.
+ * The owner's screen (PROTOCOL.md §7): what's on, two large STOP switches,
+ * the recent log, and the helper's one-time setup.
  */
 class MainActivity : Activity() {
 
+    private lateinit var statusView: TextView
     private lateinit var logView: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = Config.prefs(this)
-
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        fun label(t: String) = TextView(this).apply { text = t; textSize = 16f }
-        fun field(key: String, hint: String, password: Boolean = false) = EditText(this).apply {
-            this.hint = hint
-            setText(prefs.getString(key, "") ?: "")
-            if (password) inputType = 129 // textPassword
-            setOnFocusChangeListener { _, hasFocus ->
-                if (!hasFocus) prefs.edit().putString(key, text.toString().trim()).apply()
-            }
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        fun label(t: String, size: Float = 16f, bold: Boolean = false) = TextView(this).apply {
+            text = t; textSize = size
+            if (bold) setTypeface(typeface, Typeface.BOLD)
         }
 
+        statusView = label("", 18f, bold = true)
+        root.addView(statusView)
+
+        // STOP switches: big, separate, labeled for the owner. State is read on
+        // every incoming command, so a change applies at once, and survives reboot.
+        fun stopSwitch(key: String, title: String) = Switch(this).apply {
+            text = title; textSize = 22f
+            setPadding(0, pad, 0, pad)
+            isChecked = prefs.getBoolean(key, false)
+            setOnCheckedChangeListener { _, on ->
+                prefs.edit().putBoolean(key, on).apply()
+                refresh()
+            }
+        }
+        root.addView(stopSwitch("stop_family", "Stop family commands"))
+        root.addView(stopSwitch("stop_all", "Stop all commands"))
+
+        root.addView(label("Recent activity", 18f, bold = true))
+        logView = label("", 12f)
+        root.addView(logView)
+
+        // ---- setup (for the helper) ----
+        root.addView(label("Setup", 18f, bold = true).apply { setPadding(0, pad * 2, 0, 0) })
+        fun field(key: String, hint: String, default: String = "") = EditText(this).apply {
+            this.hint = hint
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setText(prefs.getString(key, default) ?: default)
+        }
         root.addView(label("Server"))
-        root.addView(field("server", "https://ntfy.intfar.com"))
+        val server = field("server", "https://ntfy.example.com", "https://ntfy.intfar.com").also { root.addView(it) }
         root.addView(label("Device slug"))
-        root.addView(field("slug", "chris-razr"))
+        val slug = field("slug", "chris-razr", "chris-razr").also { root.addView(it) }
         root.addView(label("Phone username"))
-        root.addView(field("username", "chris-razr-phone"))
-        root.addView(label("Phone password"))
+        val user = field("username", "chris-razr-phone").also { root.addView(it) }
+
         val creds = CredentialStore(this)
-        val pwStatus = label(if (creds.isSet()) "Password saved" else "No password saved")
-        // Write-only: the field starts empty and the saved value is never shown.
-        val pwField = EditText(this).apply { hint = "password"; inputType = 129 }
+        root.addView(label("Phone password"))
+        // Write-only: starts empty, and the saved value is never shown.
+        val pwField = EditText(this).apply {
+            hint = if (creds.isSet()) "Password saved (type to replace)" else "password"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
         root.addView(pwField)
+
+        val setupResult = label("")
         root.addView(Button(this).apply {
-            text = "Save password"
+            text = "Save setup"
             setOnClickListener {
-                val pw = CharArray(pwField.text.length).also { pwField.text.getChars(0, it.size, it, 0) }
-                if (pw.isNotEmpty()) {
+                prefs.edit()
+                    .putString("server", server.text.toString().trim())
+                    .putString("slug", slug.text.toString().trim())
+                    .putString("username", user.text.toString().trim())
+                    .apply()
+                if (pwField.text.isNotEmpty()) {
+                    val pw = CharArray(pwField.text.length).also { pwField.text.getChars(0, it.size, it, 0) }
                     creds.save(pw)
                     pw.fill('\u0000')
                     pwField.text.clear()
-                    pwStatus.text = "Password saved"
+                    pwField.hint = "Password saved (type to replace)"
                 }
+                setupResult.text = "Saved."
+                refresh()
             }
         })
-        root.addView(pwStatus)
+        root.addView(setupResult)
 
-        val startBtn = Button(this).apply {
+        root.addView(Button(this).apply {
             text = "Start bridge"
             setOnClickListener {
+                val missing = Config.missingSetup(this@MainActivity)
+                if (missing.isNotEmpty()) {
+                    setupResult.text = "Can't start: missing ${missing.joinToString(", ")}."
+                    return@setOnClickListener
+                }
                 requestNotificationPermission()
-                val i = Intent(this@MainActivity, BridgeService::class.java)
-                if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
+                startForegroundService(Intent(this@MainActivity, BridgeService::class.java))
+                refresh()
             }
-        }
-        val stopBtn = Button(this).apply {
+        })
+        root.addView(Button(this).apply {
             text = "Stop bridge"
-            setOnClickListener { stopService(Intent(this@MainActivity, BridgeService::class.java)) }
-        }
-        root.addView(startBtn); root.addView(stopBtn)
-
-        val batteryBtn = Button(this).apply {
+            setOnClickListener {
+                stopService(Intent(this@MainActivity, BridgeService::class.java))
+                refresh()
+            }
+        })
+        root.addView(Button(this).apply {
+            text = "Allow opening apps (Display over other apps)"
+            setOnClickListener {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            }
+        })
+        root.addView(Button(this).apply {
             text = "Allow background running (battery)"
             setOnClickListener {
-                val i = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                i.data = Uri.parse("package:$packageName")
-                startActivity(i)
-            }
-        }
-        root.addView(batteryBtn)
-
-        root.addView(label("STOP — family channel"))
-        root.addView(Switch(this).apply {
-            text = "Family commands OFF when switched on"
-            isChecked = Config.stopFamily(this@MainActivity)
-            setOnCheckedChangeListener { _, v ->
-                prefs.edit().putBoolean("stop_family", v).apply()
+                startActivity(
+                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+                )
             }
         })
-        root.addView(label("STOP — everything"))
-        root.addView(Switch(this).apply {
-            text = "ALL bridge commands OFF when switched on"
-            isChecked = Config.stopAll(this@MainActivity)
-            setOnCheckedChangeListener { _, v ->
-                prefs.edit().putBoolean("stop_all", v).apply()
-            }
-        })
-
-        val refreshBtn = Button(this).apply {
-            text = "Refresh log"
-            setOnClickListener { refreshLog() }
-        }
-        root.addView(refreshBtn)
-        logView = TextView(this).apply { textSize = 12f }
-        root.addView(logView)
 
         setContentView(ScrollView(this).apply { addView(root) })
-        refreshLog()
+        refresh()
     }
 
     override fun onResume() {
         super.onResume()
-        refreshLog()
+        refresh()
     }
 
-    private fun refreshLog() {
-        if (!::logView.isInitialized) return
-        val f = File(filesDir, "bridge.log")
+    private fun refresh() {
+        if (!::statusView.isInitialized) return
+        val prefs = Config.prefs(this)
+        val running = prefs.getBoolean("service_running", false)
+        val channels = when {
+            Config.stopAll(this) -> "all commands stopped"
+            Config.stopFamily(this) -> "owner channel on, family stopped"
+            else -> "owner and family channels on"
+        }
+        val last = prefs.getLong("last_connected", 0L)
+        val lastText = if (last == 0L) "never connected" else
+            "last connected " + SimpleDateFormat("MMM d HH:mm", Locale.US).format(Date(last))
+        val overlay = if (!Settings.canDrawOverlays(this))
+            "\nOpening apps is not allowed yet (see Setup)." else ""
+        statusView.text = "Bridge ${if (running) "running" else "stopped"}: $channels; $lastText.$overlay"
+
+        val f = File(filesDir, BridgeService.LOG_FILE)
         logView.text = if (f.exists()) {
-            f.readLines().takeLast(30).joinToString("\n").ifBlank { "(log empty)" }
-        } else "(no log yet)"
+            f.readLines().takeLast(50).asReversed().joinToString("\n").ifBlank { "(log empty)" }
+        } else "(no activity yet)"
     }
 
     private fun requestNotificationPermission() {
