@@ -26,6 +26,4 @@ object Config {
     fun stopAll(ctx: Context) = prefs(ctx).getBoolean("stop_all", false)
     fun stopFamily(ctx: Context) = prefs(ctx).getBoolean("stop_family", false)
 
-    const val TTL_SECONDS = 120L
-    const val DEDUP_WINDOW_MS = 24L * 60 * 60 * 1000
 }

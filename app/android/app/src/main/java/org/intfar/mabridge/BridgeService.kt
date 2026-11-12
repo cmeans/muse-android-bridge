@@ -3,45 +3,70 @@ package org.intfar.mabridge
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
+import android.media.Ringtone
 import android.media.RingtoneManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.util.Base64
 import android.util.Log
+import org.intfar.mabridge.protocol.Backoff
+import org.intfar.mabridge.protocol.Channel
+import org.intfar.mabridge.protocol.Command
+import org.intfar.mabridge.protocol.Decision
+import org.intfar.mabridge.protocol.Gate
+import org.intfar.mabridge.protocol.PILOT_REGISTRY
+import org.intfar.mabridge.protocol.Receipts
+import org.intfar.mabridge.protocol.StopState
+import org.intfar.mabridge.protocol.parseNtfyLine
 import org.json.JSONObject
-import java.io.BufferedReader
 import java.io.File
-import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
 /**
- * The executor: subscribes to both command topics over ntfy's streaming
- * JSON endpoint, applies PROTOCOL.md in order (STOP gates -> TTL -> dedup
- * -> exact-match parse -> announce -> act -> ack -> log). Plain
- * HttpURLConnection, no external dependencies.
+ * The executor's I/O. One ntfy streaming connection carries both command
+ * topics; every line goes through parseNtfyLine and Gate.decide (all
+ * protocol decisions live there), and this class only carries out the
+ * Decision: announce, launch or ring, post the receipt, append to the log.
  */
 class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     @Volatile private var running = false
+    @Volatile private var conn: HttpURLConnection? = null
     private var tts: TextToSpeech? = null
-    private var ttsReady = false
-    private val seenLock = Any()
+    @Volatile private var ttsReady = false
+    @Volatile private var ringtone: Ringtone? = null
+    private lateinit var gate: Gate
+    private lateinit var acks: ExecutorService
+    private val logLock = Any()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         tts = TextToSpeech(this, this)
+        acks = Executors.newSingleThreadExecutor()
+        gate = Gate(
+            slug = Config.deviceSlug(this),
+            registry = PILOT_REGISTRY,
+            seen = FileSeenStore(File(filesDir, "seen_ids.txt")),
+            clockMs = System::currentTimeMillis,
+            stop = { StopState(all = Config.stopAll(this), family = Config.stopFamily(this)) },
+        )
     }
 
     override fun onInit(status: Int) {
@@ -49,11 +74,14 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundWithStatus("Listening on both channels")
+        startForegroundWithStatus("Listening for commands")
+        if (intent?.action == ACTION_STOP_RING) {
+            stopRinging()
+            return START_STICKY
+        }
         if (!running) {
             running = true
-            thread(name = "mab-owner") { subscribeLoop(Config.ownerTopic(this), family = false) }
-            thread(name = "mab-family") { subscribeLoop(Config.familyTopic(this), family = true) }
+            thread(name = "mab-subscribe") { subscribeLoop() }
             log("service started")
         }
         return START_STICKY
@@ -61,41 +89,55 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     override fun onDestroy() {
         running = false
+        conn?.disconnect()
+        stopRinging()
         tts?.shutdown()
+        acks.shutdown()
+        log("service stopped")
         super.onDestroy()
     }
 
-    // ---- subscription -------------------------------------------------
+    /** Android 15+ calls this when a foreground service type's time limit is reached. */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        log("foreground time limit reached (type $fgsType); stopping")
+        stopSelf()
+    }
 
-    private fun subscribeLoop(topic: String, family: Boolean) {
-        var backoffMs = 2_000L
+    // ---- subscription -----------------------------------------------------
+
+    private fun subscribeLoop() {
+        val backoff = Backoff()
+        val slug = Config.deviceSlug(this)
+        val topics = "${Channel.OWNER.topic(slug)},${Channel.FAMILY.topic(slug)}"
         while (running) {
             try {
-                val url = URL("${Config.server(this)}/$topic/json")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.setRequestProperty("Authorization", basicAuth())
-                conn.connectTimeout = 15_000
-                conn.readTimeout = 0 // streaming
-                conn.connect()
-                if (conn.responseCode != 200) {
-                    log("subscribe $topic -> HTTP ${conn.responseCode}")
-                    conn.disconnect()
-                    Thread.sleep(backoffMs)
-                    backoffMs = (backoffMs * 2).coerceAtMost(60_000)
-                    continue
+                val c = URL("${Config.server(this)}/$topics/json").openConnection() as HttpURLConnection
+                conn = c
+                c.setRequestProperty("Authorization", basicAuth())
+                c.connectTimeout = 15_000
+                c.readTimeout = 0 // streaming
+                val code = c.responseCode
+                if (code != 200) {
+                    log("subscribe: HTTP $code")
+                    c.disconnect()
+                } else {
+                    backoff.reset()
+                    Config.prefs(this).edit().putLong("last_connected", System.currentTimeMillis()).apply()
+                    log("subscribed")
+                    c.inputStream.bufferedReader().use { reader ->
+                        while (running) {
+                            val line = reader.readLine() ?: break
+                            if (line.isNotBlank()) handle(line)
+                        }
+                    }
+                    c.disconnect()
+                    if (running) log("stream ended")
                 }
-                backoffMs = 2_000L
-                log("subscribed $topic")
-                val reader = BufferedReader(InputStreamReader(conn.inputStream))
-                while (running) {
-                    val line = reader.readLine() ?: break
-                    if (line.isNotBlank()) handleLine(line, family)
-                }
-                conn.disconnect()
             } catch (e: Exception) {
-                log("subscribe $topic error: ${e.message}")
-                try { Thread.sleep(backoffMs) } catch (_: InterruptedException) { }
-                backoffMs = (backoffMs * 2).coerceAtMost(60_000)
+                if (running) log("subscribe error: ${e.javaClass.simpleName}")
+            }
+            if (running) {
+                try { Thread.sleep(backoff.nextDelayMs()) } catch (_: InterruptedException) { }
             }
         }
     }
@@ -107,172 +149,160 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         return "Basic " + Base64.encodeToString(raw.toByteArray(), Base64.NO_WRAP)
     }
 
-    // ---- protocol -----------------------------------------------------
+    // ---- protocol -----------------------------------------------------------
 
-    private fun handleLine(line: String, family: Boolean) {
-        val msg = try { JSONObject(line) } catch (e: Exception) { return }
-        if (msg.optString("event") != "message") return
-        val id = msg.optString("id")
-        val time = msg.optLong("time")
-        val body = msg.optString("message").trim()
-        val topic = msg.optString("topic")
-
-        // Gate 1: STOP switches (PROTOCOL section 6)
-        if (Config.stopAll(this)) { log("drop (STOP all) $id $body"); return }
-        if (family && Config.stopFamily(this)) { log("drop (STOP family) $id $body"); return }
-
-        // Gate 2: TTL (section 2.3)
-        val nowSec = System.currentTimeMillis() / 1000
-        if (nowSec - time > Config.TTL_SECONDS) {
-            ack("err stale $id"); log("drop stale $id age=${nowSec - time}s"); return
+    private fun handle(line: String) {
+        val msg = parseNtfyLine(line) ?: return // keepalive, open, or not a usable message
+        when (val d = gate.decide(msg)) {
+            is Decision.Ignore -> log(d.log)
+            is Decision.DropDuplicate -> log(d.log)
+            is Decision.DropStale -> { log(d.log); ack(d.receipt) }
+            is Decision.Reject -> { log(d.log); ack(d.receipt) }
+            is Decision.Run -> run(d.command, d.channel)
         }
-
-        // Gate 3: dedup by message id, 24h window (section 2.3)
-        if (!markSeen(id)) { log("drop duplicate $id"); return }
-
-        // Gate 4: exact-match parse, never interpret (section 2.1/2.2)
-        execute(body, family, id, topic)
     }
 
-    private fun execute(body: String, family: Boolean, id: String, topic: String) {
-        val launchMatch = Regex("^launch ([a-z]+)$").matchEntire(body)
-        when {
-            launchMatch != null -> {
-                val app = launchMatch.groupValues[1]
-                val entry = org.intfar.mabridge.protocol.PILOT_REGISTRY.apps[app]
-                if (entry == null) { ack("err unknown-command $id"); log("unknown app $app"); return }
-                announce("Opening ${entry.displayName}")
-                val intent = packageManager.getLaunchIntentForPackage(entry.pkg)
+    private fun run(command: Command, channel: Channel) {
+        val who = if (channel == Channel.OWNER) "the owner channel" else "family"
+        val name = channel.name.lowercase()
+        when (command) {
+            is Command.Launch -> {
+                val app = PILOT_REGISTRY.apps.getValue(command.app)
+                val intent = packageManager.getLaunchIntentForPackage(app.pkg)
                 if (intent == null) {
-                    ack("err not-installed $app"); log("not installed: $app"); return
+                    ack(Receipts.notInstalled(command))
+                    log("not-installed ($name): ${command.text}")
+                    return
                 }
+                if (Build.VERSION.SDK_INT >= 29 && !Settings.canDrawOverlays(this)) {
+                    // Android blocks activity starts from the background without it.
+                    log("warning: 'Display over other apps' is off; the launch may be blocked")
+                }
+                announce("Opening ${app.displayName}: asked by $who")
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(intent)
-                ack("ok launch $app")
-                log("ok launch $app (from $topic)")
+                ack(Receipts.ok(command))
+                log("ok ($name): ${command.text}")
             }
-            body == "ring find" -> {
-                announce("Ringing so you can find the phone")
-                ringPhone()
-                ack("ok ring find")
-                log("ok ring find (from $topic)")
+            Command.RingFind -> {
+                announce("Ringing so you can find the phone: asked by $who")
+                ring()
+                ack(Receipts.ok(command))
+                log("ok ($name): ${command.text}")
             }
-            body == "status report" && !family -> {
-                val bm = getSystemService(BATTERY_SERVICE) as android.os.BatteryManager
-                val level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
-                ack("ok status battery=$level stopAll=${Config.stopAll(this)} stopFamily=${Config.stopFamily(this)}")
-                log("ok status report")
+            Command.StatusReport -> {
+                val bm = getSystemService(BATTERY_SERVICE) as BatteryManager
+                val battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
+                val stop = StopState(all = Config.stopAll(this), family = Config.stopFamily(this))
+                ack(Receipts.status(battery, version, PROTOCOL_VERSION, stop))
+                log("ok ($name): ${command.text}")
             }
-            body == "bootstrap rustdesk" || body == "update rustdesk" -> {
-                if (family) { ack("err unknown-command $id"); return }
-                // Phase 3 stub: never pretend a control capability exists.
-                ack("err not-implemented $id")
-                log("not-implemented: $body")
-            }
-            else -> {
-                ack("err unknown-command $id")
-                log("unknown command: $body (from $topic)")
+            Command.BootstrapRustdesk, Command.UpdateRustdesk -> {
+                ack(Receipts.notImplemented(command))
+                log("not-implemented ($name): ${command.text}")
             }
         }
     }
 
-    // ---- actions --------------------------------------------------------
+    // ---- actions ------------------------------------------------------------
 
     private fun announce(text: String) {
-        if (ttsReady) {
-            tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "mab")
-        }
+        if (ttsReady) tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "mab")
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        ensureAnnounceChannel(nm)
+        nm.createNotificationChannel(
+            NotificationChannel(CH_ANNOUNCE, "Bridge announcements", NotificationManager.IMPORTANCE_HIGH)
+        )
         val n = Notification.Builder(this, CH_ANNOUNCE)
             .setContentTitle("Muse Bridge")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setPriority(Notification.PRIORITY_HIGH)
+            .setAutoCancel(true)
             .build()
-        nm.notify((System.currentTimeMillis() % 100000).toInt(), n)
+        nm.notify((System.currentTimeMillis() % 100_000).toInt() + 10, n)
     }
 
-    private fun ringPhone() {
+    private fun ring() {
+        stopRinging()
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        nm.createNotificationChannel(
+            NotificationChannel(CH_ANNOUNCE, "Bridge announcements", NotificationManager.IMPORTANCE_HIGH)
+        )
+        val stopIntent = PendingIntent.getService(
+            this, 1, Intent(this, BridgeService::class.java).setAction(ACTION_STOP_RING),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        val n = Notification.Builder(this, CH_ANNOUNCE)
+            .setContentTitle("Muse Bridge is ringing")
+            .setContentText("Tap Stop ringing to silence it")
+            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .addAction(Notification.Action.Builder(null, "Stop ringing", stopIntent).build())
+            .setOngoing(true)
+            .build()
+        nm.notify(RING_NOTIFICATION, n)
         thread(name = "mab-ring") {
-            val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-            val rt = RingtoneManager.getRingtone(this, uri)
+            val rt = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+                ?: RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
+                ?: return@thread
             rt.audioAttributes = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ALARM)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
+            ringtone = rt
             rt.play()
-            val until = System.currentTimeMillis() + 30_000
-            while (System.currentTimeMillis() < until && !Config.stopAll(this)) {
-                Thread.sleep(500)
+            val until = System.currentTimeMillis() + RING_MS
+            while (ringtone === rt && System.currentTimeMillis() < until && !Config.stopAll(this)) {
+                try { Thread.sleep(250) } catch (_: InterruptedException) { break }
             }
-            rt.stop()
+            if (ringtone === rt) stopRinging()
         }
+    }
+
+    private fun stopRinging() {
+        ringtone?.stop()
+        ringtone = null
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(RING_NOTIFICATION)
     }
 
     private fun ack(text: String) {
-        thread(name = "mab-ack") {
+        if (acks.isShutdown) return
+        acks.execute {
             try {
-                val url = URL("${Config.server(this)}/")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Authorization", basicAuth())
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.doOutput = true
-                val payload = JSONObject()
-                    .put("topic", Config.ackTopic(this))
-                    .put("message", text)
-                    .toString()
-                conn.outputStream.use { it.write(payload.toByteArray()) }
-                conn.responseCode // drain
-                conn.disconnect()
+                val c = URL("${Config.server(this)}/").openConnection() as HttpURLConnection
+                c.requestMethod = "POST"
+                c.setRequestProperty("Authorization", basicAuth())
+                c.setRequestProperty("Content-Type", "application/json")
+                c.connectTimeout = 15_000
+                c.readTimeout = 15_000
+                c.doOutput = true
+                val payload = JSONObject().put("topic", Config.ackTopic(this)).put("message", text).toString()
+                c.outputStream.use { it.write(payload.toByteArray()) }
+                val code = c.responseCode
+                c.disconnect()
+                if (code != 200) log("receipt failed: HTTP $code: $text")
             } catch (e: Exception) {
-                log("ack failed: ${e.message}")
+                log("receipt failed: ${e.javaClass.simpleName}: $text")
             }
         }
     }
 
-    // ---- bookkeeping ----------------------------------------------------
+    // ---- bookkeeping --------------------------------------------------------
 
-    private fun markSeen(id: String): Boolean {
-        if (id.isBlank()) return true
-        val f = File(filesDir, "seen_ids.txt")
-        synchronized(seenLock) {
-            val now = System.currentTimeMillis()
-            val kept = mutableListOf<String>()
-            var dup = false
-            if (f.exists()) {
-                f.readLines().forEach { line ->
-                    val parts = line.split(" ")
-                    if (parts.size == 2) {
-                        val ts = parts[1].toLongOrNull() ?: 0
-                        if (now - ts < Config.DEDUP_WINDOW_MS) {
-                            kept.add(line)
-                            if (parts[0] == id) dup = true
-                        }
-                    }
-                }
-            }
-            if (dup) return false
-            kept.add("$id $now")
-            f.writeText(kept.joinToString("\n") + "\n")
-            return true
-        }
-    }
-
-    fun log(text: String) {
+    private fun log(text: String) {
         val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
         Log.i("MABridge", text)
-        try {
-            File(filesDir, "bridge.log").appendText("$ts | $text\n")
-        } catch (_: Exception) { }
+        synchronized(logLock) {
+            try {
+                File(filesDir, LOG_FILE).appendText("$ts | $text\n")
+            } catch (_: Exception) { }
+        }
     }
-
-    // ---- foreground plumbing ---------------------------------------------
 
     private fun startForegroundWithStatus(text: String) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        ensureStatusChannel(nm)
+        nm.createNotificationChannel(
+            NotificationChannel(CH_STATUS, "Bridge status", NotificationManager.IMPORTANCE_LOW)
+        )
         val n = Notification.Builder(this, CH_STATUS)
             .setContentTitle("Muse Bridge")
             .setContentText(text)
@@ -280,26 +310,20 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             .setOngoing(true)
             .build()
         if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            startForeground(STATUS_NOTIFICATION, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
-            startForeground(1, n)
+            startForeground(STATUS_NOTIFICATION, n)
         }
     }
 
-    private fun ensureStatusChannel(nm: NotificationManager) {
-        nm.createNotificationChannel(
-            NotificationChannel(CH_STATUS, "Bridge status", NotificationManager.IMPORTANCE_LOW)
-        )
-    }
-
-    private fun ensureAnnounceChannel(nm: NotificationManager) {
-        nm.createNotificationChannel(
-            NotificationChannel(CH_ANNOUNCE, "Bridge announcements", NotificationManager.IMPORTANCE_HIGH)
-        )
-    }
-
     companion object {
+        const val PROTOCOL_VERSION = "0.2"
+        const val LOG_FILE = "bridge.log"
+        private const val ACTION_STOP_RING = "org.intfar.mabridge.STOP_RING"
         private const val CH_STATUS = "mab_status"
         private const val CH_ANNOUNCE = "mab_announce"
+        private const val STATUS_NOTIFICATION = 1
+        private const val RING_NOTIFICATION = 2
+        private const val RING_MS = 30_000L
     }
 }
