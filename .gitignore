@@ -13,6 +13,11 @@ secrets.*
 *.aab
 build/
 .gradle/
+.kotlin/
+local.properties
+.idea/
+*.iml
+captures/
 __pycache__/
 
 # Local provisioning state (real IPs, device IDs, whitelists live elsewhere)

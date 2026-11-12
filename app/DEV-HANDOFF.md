@@ -43,12 +43,12 @@ the separate Phase 3 design is approved.
 shape concrete: manifest, configuration/registry, a foreground
 `BridgeService`, setup/STOP/log activity, and a boot receiver.
 
-It has **not** been compiled or run on a device. The local Android SDK
-platform installation is not complete: JDK 17 and command-line tools
-are installed under `~/workspace/android-toolchain/`, but
-`sdkmanager` package downloads have intermittently failed inside the
-VM's HTTP proxy tunnel (`NoSuchElementException` in Java's proxy
-tunnelling code). Claude-dev may retain, refactor, or replace the
+It builds (2026-11-12, claude-dev, on Chris's workstation: Gradle
+wrapper 8.14.7 with a pinned checksum, Android Gradle plugin 8.13.2,
+Kotlin 2.2.10, compileSdk/targetSdk 36, built with a JDK 21). It has
+**not** been run on a device. Muse's VM never completed an SDK install
+(`sdkmanager` downloads failed in its HTTP proxy tunnel), so builds run
+on the workstation. Claude-dev may retain, refactor, or replace the
 scaffold; the protocol and tests are the contract, not this code.
 
 Known scaffold gaps before any family deployment:
@@ -60,7 +60,8 @@ Known scaffold gaps before any family deployment:
 - add unit tests for gate order, TTL, dedup, and malformed commands;
 - prove reconnect/backoff, Doze behaviour, locked-phone behaviour,
   NordVPN behaviour, and 48-hour battery cost;
-- generate and pin the Gradle wrapper and a reproducible signing setup.
+- a reproducible signing setup (the Gradle wrapper is generated and
+  pinned).
 
 ## Recommended implementation path
 

@@ -6,28 +6,25 @@ plugins {
 }
 
 android {
-    namespace 'org.intfar.mabridge'
-    compileSdk 36
+    namespace = 'org.intfar.mabridge'
+    compileSdk = 36
 
     defaultConfig {
-        applicationId 'org.intfar.mabridge'
-        minSdk 29
-        targetSdk 36
-        versionCode 1
-        versionName '0.1.0'
+        applicationId = 'org.intfar.mabridge'
+        minSdk = 29
+        targetSdk = 36
+        versionCode = 1
+        versionName = '0.1.0'
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
-    }
-    testOptions {
-        unitTests.returnDefaultValues = false
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 }
 
