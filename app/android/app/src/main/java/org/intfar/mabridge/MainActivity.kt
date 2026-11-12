@@ -20,6 +20,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.intfar.mabridge.protocol.isValidSlug
 
 /**
  * The owner's screen (PROTOCOL.md §7): what's on, two large STOP switches,
@@ -74,9 +75,9 @@ class MainActivity : Activity() {
         root.addView(label("Server"))
         val server = field("server", "https://ntfy.example.com", "https://ntfy.intfar.com").also { root.addView(it) }
         root.addView(label("Device slug"))
-        val slug = field("slug", "e.g. peggy-pixel").also { root.addView(it) }
+        val slug = field("slug", "e.g. peggy-phone").also { root.addView(it) }
         root.addView(label("Phone username"))
-        val user = field("username", "e.g. peggy-pixel-phone").also { root.addView(it) }
+        val user = field("username", "e.g. peggy-phone-phone").also { root.addView(it) }
 
         val creds = CredentialStore(this)
         root.addView(label("Phone password"))
@@ -91,9 +92,14 @@ class MainActivity : Activity() {
         root.addView(Button(this).apply {
             text = "Save setup"
             setOnClickListener {
+                val slugText = slug.text.toString().trim()
+                if (!isValidSlug(slugText)) {
+                    setupResult.text = "Not saved: the device slug must be lowercase letters, digits and single hyphens (like peggy-phone)."
+                    return@setOnClickListener
+                }
                 prefs.edit()
                     .putString("server", server.text.toString().trim())
-                    .putString("slug", slug.text.toString().trim())
+                    .putString("slug", slugText)
                     .putString("username", user.text.toString().trim())
                     .apply()
                 if (pwField.text.isNotEmpty()) {
