@@ -26,7 +26,6 @@ import org.intfar.mabridge.protocol.Channel
 import org.intfar.mabridge.protocol.Command
 import org.intfar.mabridge.protocol.Decision
 import org.intfar.mabridge.protocol.Gate
-import org.intfar.mabridge.protocol.logExcerpt
 import org.intfar.mabridge.protocol.PILOT_REGISTRY
 import org.intfar.mabridge.protocol.RateLimiter
 import org.intfar.mabridge.protocol.StaleReceipts
@@ -248,8 +247,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
      * Whether [pkg] is in front within FOREGROUND_CHECK_MS of [sinceMs] (#7): the most recent
      * activity Android resumed, in the usage events it records, belongs to [pkg]. That also
      * covers an app that was already in front, which a launch just brings forward without a
-     * new resume. Null when the app has no usage access, or the check itself failed, so it
-     * can't tell.
+     * new resume. Null when it can't tell: no usage access, no app resumed in the last
+     * 24 h, the check itself failed, or the bridge is stopping. The log says which.
      */
     private fun reachedForeground(pkg: String, sinceMs: Long): Boolean? {
         if (!hasUsageAccess()) return null
@@ -272,9 +271,13 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             while (true) {
                 val front = lastResumed(sinceMs - 1_000, System.currentTimeMillis() + 1_000) ?: before
                 if (front == pkg) return true
-                // No resume recorded at all, before or since: the phone keeps no usable
-                // usage history, so the check can't tell (unverified), not "blocked".
-                if (SystemClock.elapsedRealtime() >= deadline) return if (front == null) null else false
+                if (!running) return null // stopping: don't hold up onDestroy
+                // No app resumed at all in the last 24 h (the phone sat idle that long, or
+                // keeps no usage history): the check can't tell, so unverified, not blocked.
+                if (SystemClock.elapsedRealtime() >= deadline) {
+                    if (front == null) log("launch check: no app resumed in 24 h; unverified")
+                    return if (front == null) null else false
+                }
                 Thread.sleep(250)
             }
         } catch (e: Exception) {
@@ -337,7 +340,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                     }
                     null -> {
                         ack(Receipts.ok(command))
-                        log("ok ($name): ${command.text} (unverified)")
+                        log("ok ($name): ${command.text} (unverified${if (hasUsageAccess()) "" else ": no usage access"})")
                     }
                 }
                 return
@@ -505,10 +508,11 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     private fun ack(text: String) {
         if (acks.isShutdown) {
             // The service is stopping (e.g. during a launch check): say so, don't drop it silently.
-            log("receipt not sent, bridge stopping: ${logExcerpt(text)}")
+            log("receipt not sent, bridge stopping: $text")
             return
         }
-        acks.execute {
+        try {
+            acks.execute {
             var c: HttpURLConnection? = null
             try {
                 c = URL("${Config.server(this)}/").openConnection() as HttpURLConnection
@@ -527,6 +531,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             } finally {
                 c?.disconnect()
             }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // Shut down between the check above and here.
+            log("receipt not sent, bridge stopping: $text")
         }
     }
 

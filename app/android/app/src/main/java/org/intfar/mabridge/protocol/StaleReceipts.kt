@@ -23,12 +23,14 @@ class StaleReceipts {
         return false
     }
 
-    /** A new connection opened at server time [openTimeSec]; call [flush] first to log the last backlog's count. */
+    /**
+     * A new connection opened at server time [openTimeSec]. The last backlog's unsent count
+     * carries over until [flush] reads it, so a missed flush can't lose it.
+     */
     @Synchronized
     fun connected(openTimeSec: Long) {
         this.openTimeSec = openTimeSec
         sent = 0
-        suppressed = 0
     }
 
     /**

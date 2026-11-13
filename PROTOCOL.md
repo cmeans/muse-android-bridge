@@ -221,7 +221,9 @@ which needs the owner to grant usage access; an app already in front
 counts, and so does one opened behind the lock screen. Without usage
 access, `ok launch` means the launch was sent and not refused, the
 executor's log says it was unverified, and `status report` says
-`launch-check=off`.
+`launch-check=off`. Even with usage access, an `ok launch` is unverified
+when the check can't tell (no app resumed in the last 24 h, or the check
+failed); the log says so and why.
 
 ## 7. On-phone controls (owner sovereignty)
 

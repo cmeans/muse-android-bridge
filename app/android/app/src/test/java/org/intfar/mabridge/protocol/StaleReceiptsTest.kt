@@ -58,4 +58,12 @@ class StaleReceiptsTest {
         s.connected(open + 10)
         assertEquals(0, s.flush())
     }
+
+    @Test fun anUnflushedCountCarriesOverAReconnect() {
+        val s = StaleReceipts()
+        s.connected(open)
+        repeat(7) { s.shouldSend(open - 50) }
+        s.connected(open + 30)
+        assertEquals(2, s.flush())
+    }
 }
