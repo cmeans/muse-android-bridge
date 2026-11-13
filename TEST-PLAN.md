@@ -3,8 +3,8 @@
 **Version:** 0.1 (2026-11-11)
 Every item here is a genuine unknown: something the design assumes but nobody
 has measured yet. Each test names its method and what "pass" looks like.
-Phase tags refer to `ARCHITECTURE.md` §6. Nothing on Peggy's phone is touched
-until every Phase 1–3 item that bears on it has a recorded result.
+Phase tags refer to `ARCHITECTURE.md` §6. Nothing on the owner's phone is
+touched until every Phase 1–3 item that bears on it has a recorded result.
 
 ## A. Bridge transport (ntfy) — Phase 1
 
@@ -39,7 +39,7 @@ until every Phase 1–3 item that bears on it has a recorded result.
 | C5 | Whitelist semantics | Two controller IDs whitelisted; connect from both; remove one; retry | Both work; removed ID refused before password prompt; re-adding restores |
 | C6 | IP-change breakage (accepted risk — no DDNS) | Change the configured server address to a wrong IP; observe failure mode; restore | Failure is obvious and diagnosable; recovery procedure written down |
 
-## D. Controller (per-operator stack) — Phase 1 (Chris-side), Phase 4 (Peggy-side)
+## D. Controller (per-operator stack) — Phase 1 (operator-side), Phase 4 (owner-side)
 
 | # | Unknown | Test | Pass looks like |
 |---|---|---|---|
@@ -54,10 +54,10 @@ until every Phase 1–3 item that bears on it has a recorded result.
 
 | # | Unknown | Test | Pass looks like |
 |---|---|---|---|
-| E1 | How does Peggy's Muse publish owner-channel commands? | Mechanism + credential storage in her Muse's environment; fire the full registry | Works with credentials never touching the phone or Peggy |
-| E2 | Voice + control simultaneously | Voice conversation with her Muse open while a control session runs on the same phone | Narration usable; audio routing sane; if not, narration moves to before/after summaries (open decision §7.3) |
-| E3 | Drill effectiveness | Teach the Start-service sequence incl. the scam-warning countdown; test cold a week later | She performs it unaided and can state the rule: only when her Muse asks, never for a caller |
-| E4 | Fake-alarm end-to-end (the motivating case) | Plant a Chrome site-notification alarm; owner asks her Muse to fix it; nobody helps | Fixed via the §4 session flow; time and tap count recorded |
+| E1 | How does the owner's Muse publish owner-channel commands? | Mechanism + credential storage in their Muse's environment; fire the full registry | Works with credentials never touching the phone or the owner |
+| E2 | Voice + control simultaneously | Voice conversation with their Muse open while a control session runs on the same phone | Narration usable; audio routing sane; if not, narration moves to before/after summaries (open decision §7.3) |
+| E3 | Drill effectiveness | Teach the Start-service sequence incl. the scam-warning countdown; test cold a week later | They perform it unaided and can state the rule: only when their Muse asks, never for a caller |
+| E4 | Fake-alarm end-to-end (the motivating case) | Plant a Chrome site-notification alarm; owner asks their Muse to fix it; nobody helps | Fixed via the §4 session flow; time and tap count recorded |
 
 ## F. Security drills — before Phase 4 completes
 

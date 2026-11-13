@@ -1,6 +1,6 @@
 # Native app — development handoff path
 
-_Status: prepared 2026-11-11 as the map; on 2026-11-12 Chris handed
+_Status: prepared 2026-11-11 as the map; on 2026-11-12 the maintainer handed
 implementation to claude-dev, and PR #4 implements steps 1, 3 and 4
 below. Step 2 is implemented and awaits its long-run device evidence._
 
@@ -29,7 +29,7 @@ the separate Phase 3 design is approved.
 ## What is already proven
 
 - The ntfy server, topics, users, and ACL separation are live for the
-  `chris-razr` pilot and were verified end to end.
+  `owner-phone` pilot and were verified end to end.
 - Security drills F1 (publisher revocation) and F2 (phone credential
   scope) passed.
 - The Tasker probe received real commands on both channels and resolved
@@ -44,7 +44,7 @@ the separate Phase 3 design is approved.
 shape concrete: manifest, configuration/registry, a foreground
 `BridgeService`, setup/STOP/log activity, and a boot receiver.
 
-It builds (2026-11-12, claude-dev, on Chris's workstation: Gradle
+It builds (2026-11-12, claude-dev, on the maintainer's workstation: Gradle
 wrapper 8.14.7 with a pinned checksum, Android Gradle plugin 8.13.2,
 Kotlin 2.2.21, compileSdk/targetSdk 36, built with a JDK 21). The
 toolchain stays on the AGP 8 / Gradle 8 line on purpose: AGP 9 needs
@@ -101,30 +101,30 @@ TTL, dedup and malformed input; what follows is still open):
    configuration is frozen: no workflow may require them to import,
    update settings, or maintain the app.
 5. **Signing and distribution.** Use a debug/sideload build only for
-   Chris's pilot phone. Before Michele/Peggy rollout, settle release
-   signing, update delivery, and whether Play internal testing is worth
-   its account/process overhead. An update must never change the app's
-   signing identity unexpectedly.
+   the pilot phone. Before rollout to the helper's and owner's phones,
+   settle release signing, update delivery, and whether Play internal
+   testing is worth its account/process overhead. An update must never
+   change the app's signing identity unexpectedly.
 6. **Device gates.** Run the app equivalents of test groups A and B on
    the pilot phone: delivery latency/reliability, VPN, stale replay, dedup,
    locked phone, STOP persistence, malformed-input safety, and battery.
    targetSdk 36 opts the app into Android 16's behavior changes, on
    top of Android 15's, which already applied at targetSdk 35 (such as
    the foreground-service rules behind issue #1); these gates cover
-   both. Only after they pass does the app move to Michele,
-   then Peggy.
+   both. Only after they pass does the app move to a
+   helper's phone, then the owner's.
 
 ## Decisions still open
 
-- Peggy's phone make/model and Android version; this affects minimum
+- The owner's phone make/model and Android version; this affects minimum
   SDK, background limits, RustDesk behavior, and setup instructions.
 - Final distribution route for family phones: sideloaded release APK
   versus Play internal testing.
 - Whether direct ntfy streaming is sufficient or the production app
   needs an additional wake mechanism; decide from A-group measurements,
   not by assumption.
-- How Peggy's own Muse will publish owner-channel commands and where
-  that credential will live on her side (test E1).
+- How the owner's own Muse will publish owner-channel commands and where
+  that credential will live on their side (test E1).
 - RustDesk server/controller work remains Phase 3 and needs its own
   explicit go; it is not bundled into this app handoff.
 
@@ -132,5 +132,5 @@ TTL, dedup and malformed input; what follows is still open):
 
 The handoff is for implementation and test evidence. It does not by
 itself authorize the RustDesk server, router changes, installation on
-Michele's or Peggy's phones, or a production rollout. Those stay with
-Chris's explicit decisions.
+the helper's or owner's phones, or a production rollout. Those stay with
+the maintainer's explicit decisions.
