@@ -13,7 +13,7 @@ class StaleReceipts {
     private var sent = 0
     private var suppressed = 0
 
-    /** Whether a stale message with server time [timeSec] gets a receipt. */
+    /** Whether a stale message with server time [timeSec] gets a receipt (one sent in the open's own second is live). */
     @Synchronized
     fun shouldSend(timeSec: Long): Boolean {
         val open = openTimeSec ?: return true
@@ -30,6 +30,13 @@ class StaleReceipts {
         sent = 0
         suppressed = 0
     }
+
+    /**
+     * The backlog's unsent count, cleared: called when the replay is over (the first live
+     * message, the stream's end, the service stopping), so the log line lands on time.
+     */
+    @Synchronized
+    fun flush(): Int = suppressed.also { suppressed = 0 }
 
     companion object {
         const val CAP = 5

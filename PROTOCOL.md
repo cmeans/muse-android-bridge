@@ -160,8 +160,9 @@ On receiving a message, an executor MUST:
    `err unknown-command` receipt, take no other action. Never attempt to
    interpret, complete, or "helpfully" parse a non-registry body.
 3. Check the channel's local enable state (§7). Disabled → `err <command> disabled`.
-   Then the channel's rate limit (§3): over it → `err <command> rate-limited`,
-   with no announcement or action, and the refused command doesn't count.
+   Then the channel's rate limit (§3): over it → `err <command> rate-limited`
+   (the first refusal of a run; repeats are logged only, §6), with no
+   announcement or action, and the refused command doesn't count.
 4. Announce on the phone *before* acting: a persistent visual banner plus
    spoken announcement where the executor supports it, naming the action and
    the channel — e.g. "Opening Meet — asked by family." The phone's owner
@@ -203,12 +204,15 @@ logged only, with a count, so the receipt for a fresh command isn't
 queued behind them. A stale message that arrives live (a phone clock
 that's off, for instance) always gets its receipt.
 
-The rate limits (§3) count only commands that acted: a launch that was
-sent (even one reported `blocked`) or a new ring. A refused command, an
-app that isn't installed, or a `ring find` that joins a ring already
-going doesn't use up the budget. Only the first refusal per channel and
-kind in a window gets a `rate-limited` receipt; repeats are logged
-only. The limits are counted since the executor last started.
+The rate limits (§3) count every `ring find` and launch that passes the
+STOP check, whatever it then does: one that joins a ring already going
+still announces, so it counts, and so does a launch of an app that isn't
+installed. A command refused by the limit doesn't count. The first
+refusal of a run (per channel and kind) gets a `rate-limited` receipt;
+the run's repeats within the window are logged only, and a command that
+runs again starts a new run. The limits are counted since the executor
+last started. Receipts for messages the limit never sees
+(`unknown-command`, `disabled`) are not capped yet.
 
 Receipts confirm what the *executor did*, not what the user did next
 (`ok launch meet` means Meet came to the foreground, not that anyone

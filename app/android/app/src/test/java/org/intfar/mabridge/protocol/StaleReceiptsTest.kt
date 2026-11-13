@@ -39,4 +39,20 @@ class StaleReceiptsTest {
         val s = StaleReceipts()
         repeat(10) { assertTrue(s.shouldSend(open)) }
     }
+
+    @Test fun aMessageInTheOpensOwnSecondIsLive() {
+        val s = StaleReceipts()
+        s.connected(open)
+        repeat(10) { s.shouldSend(open - 1) }
+        assertTrue(s.shouldSend(open))
+    }
+
+    @Test fun flushReportsTheCountOnce() {
+        val s = StaleReceipts()
+        s.connected(open)
+        repeat(9) { s.shouldSend(open - 50) }
+        assertEquals(4, s.flush())
+        assertEquals(0, s.flush())
+        assertEquals(0, s.connected(open + 10))
+    }
 }

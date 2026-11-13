@@ -3,11 +3,11 @@ package org.intfar.mabridge.protocol
 /**
  * Per-channel limits on the commands that act on the phone (PROTOCOL §3, §6):
  * at most [RING_LIMIT] `ring find` and [LAUNCH_LIMIT] launches (all apps
- * together) that ran per [WINDOW_MS] on each channel. [allows] checks before a
- * command runs; [record] counts it once it did something (opened an app,
- * started a ring), so a refused command, a launch of an app that isn't
- * installed, or a `ring find` that joined a ring already going doesn't use up
- * the budget. Status reports and the RustDesk placeholders aren't limited.
+ * together) per [WINDOW_MS] on each channel. Every command that passes the
+ * STOP switches counts ([allows], then [record] before it runs), whatever it
+ * then does: one that joins a ring already going still announces, so it counts
+ * too. A command refused here doesn't count. Status reports and the RustDesk
+ * placeholders aren't limited.
  *
  * Times must come from a clock that never goes back (SystemClock.elapsedRealtime
  * on Android): a wall-clock correction would otherwise strand stored times in
@@ -38,14 +38,17 @@ class RateLimiter {
     fun record(channel: Channel, command: Command, nowMs: Long) {
         val (kind, _) = budget(command) ?: return
         recent(channel, kind, nowMs).addLast(nowMs)
+        // A run of refusals ended: the next refusal gets its receipt again.
+        refusalReceipts.remove(channel to kind)
     }
 
     private val refusalReceipts = HashMap<Pair<Channel, String>, Long>()
 
     /**
      * Whether a refused command gets an `err <command> rate-limited` receipt: the first
-     * refusal per channel and kind in a window does, the rest are logged only, so a looping
-     * publisher can't fill the receipt queue.
+     * refusal of a run (per channel and kind) does, and the rest of that run within a
+     * window are logged only, so a looping publisher can't fill the receipt queue. A
+     * command that runs ends the run.
      */
     @Synchronized
     fun shouldReceiptRefusal(channel: Channel, command: Command, nowMs: Long): Boolean {

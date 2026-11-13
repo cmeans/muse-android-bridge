@@ -116,6 +116,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     override fun onDestroy() {
         val wasRunning = running
         running = false
+        flushBacklog()
         Config.prefs(this).edit().putBoolean("service_running", false).apply()
         conn?.disconnect()
         stopRinging("bridge stopped")
@@ -168,6 +169,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                         }
                     } finally {
                         backoff.streamEnded(SystemClock.elapsedRealtime() - openedAt)
+                        flushBacklog()
                     }
                     if (running) log("stream ended")
                 }
@@ -208,8 +210,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 // receipt for a fresh command isn't queued behind them all (§6).
                 if (stale.shouldSend(msg.timeSec)) ack(d.receipt)
             }
-            is Decision.Reject -> { log(d.log); ack(d.receipt) }
+            is Decision.Reject -> { flushBacklog(); log(d.log); ack(d.receipt) }
             is Decision.Run -> try {
+                flushBacklog()
                 // Monotonic: a wall-clock correction mustn't strand the limiter's times (§3).
                 val now = SystemClock.elapsedRealtime()
                 if (!limiter.allows(d.channel, d.command, now)) {
@@ -220,13 +223,20 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                     log("rate-limited (${d.channel.name.lowercase()}): ${d.command.text}${if (receipt) "" else " (no receipt: one already sent this window)"}")
                     return
                 }
-                if (run(d.command, d.channel)) limiter.record(d.channel, d.command, now)
+                // Every command past STOP counts, whatever it then does (§3, §6).
+                limiter.record(d.channel, d.command, now)
+                run(d.command, d.channel)
             } catch (e: Exception) {
                 // One failed action mustn't drop the subscription; it isn't retried (§5).
                 ack(Receipts.failed(d.command))
                 log("failed (${d.channel.name.lowercase()}): ${d.command.text}: ${e.javaClass.simpleName}")
             }
         }
+    }
+
+    /** The replayed backlog is over: log how many stale receipts it left unsent (#8). */
+    private fun flushBacklog() {
+        stale.flush().let { if (it > 0) log("stale backlog: $it dropped-stale receipts not sent") }
     }
 
     /** Whether the owner gave the app usage access, which the launch check needs. */
@@ -335,7 +345,6 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                     RingOutcome.STARTED, RingOutcome.JOINED -> {
                         ack(Receipts.ok(command))
                         log("ok ($name): ${command.text}")
-                        // Joining a ring already going doesn't count toward the limit (§6).
                         outcome == RingOutcome.STARTED
                     }
                     RingOutcome.FAILED -> {

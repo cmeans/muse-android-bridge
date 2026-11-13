@@ -37,13 +37,22 @@ class RateLimiterTest {
         assertTrue(r.run(OWNER, Command.RingFind, t + 10 * min + 3))
     }
 
-    @Test fun onlyRecordedRunsCount() {
-        // A command that passed the limit but did nothing (not installed, joined a ring
-        // already going) isn't recorded, so it doesn't use up the budget.
+    @Test fun checkingDoesNotCountOnlyRecordingDoes() {
         val r = RateLimiter()
         repeat(10) { assertTrue(r.allows(OWNER, Command.RingFind, t + it)) }
         repeat(3) { assertTrue(r.run(OWNER, Command.RingFind, t + 20 + it)) }
         assertFalse(r.allows(OWNER, Command.RingFind, t + 30))
+    }
+
+    @Test fun aNewRunOfRefusalsGetsItsReceiptAgain() {
+        val r = RateLimiter()
+        repeat(3) { r.run(OWNER, Command.RingFind, t + it * min) }
+        assertTrue(r.shouldReceiptRefusal(OWNER, Command.RingFind, t + 3 * min))
+        // Ten minutes on, rings run again, then the limit is hit again: that refusal is
+        // a new run and must get a receipt, not vanish.
+        repeat(3) { assertTrue(r.run(OWNER, Command.RingFind, t + (10 + it) * min)) }
+        assertTrue(r.shouldReceiptRefusal(OWNER, Command.RingFind, t + 12 * min + 30_000))
+        assertFalse(r.shouldReceiptRefusal(OWNER, Command.RingFind, t + 14 * min))
     }
 
     @Test fun channelsAreLimitedSeparately() {
