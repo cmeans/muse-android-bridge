@@ -85,6 +85,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     override fun onCreate() {
         super.onCreate()
         Config.prefs(this).registerOnSharedPreferenceChangeListener(stopListener)
+        // The status notification moved to a new channel (see startForegroundWithStatus); the
+        // old silent one goes once, here.
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).deleteNotificationChannel(CH_STATUS_OLD)
         tts = TextToSpeech(this, this)
         acks = Executors.newSingleThreadExecutor()
         gate = Gate(
@@ -496,8 +499,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             Notification.Builder(this, CH_ANNOUNCE)
                 .setContentTitle("Muse Bridge is ringing")
                 .setContentText("Tap Stop ringing to silence it")
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setSmallIcon(R.drawable.ic_bridge)
                 .addAction(Notification.Action.Builder(null, "Stop ringing", stopIntent).build())
+                // Its own group, so Stop ringing isn't bundled behind the announcement before it.
+                .setGroup(GROUP_RING)
                 .setContentIntent(ownerScreen())
                 // Stop ringing must work from the lock screen, whatever it hides.
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
@@ -603,9 +608,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         // Default importance, with no sound or vibration: lock screens hide silent (low)
         // notifications by default, and the STOP buttons must show there. A channel's
-        // importance can't be raised once created, so this is a new channel, and the old
-        // silent one is deleted.
-        nm.deleteNotificationChannel(CH_STATUS_OLD)
+        // importance can't be raised once created, so this is a new channel; onCreate deletes
+        // the old silent one.
         nm.createNotificationChannel(
             NotificationChannel(CH_STATUS, "Bridge status", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 setSound(null, null)
@@ -627,6 +631,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             .setOngoing(true)
             // Re-posted on every STOP change; only the first post may alert.
             .setOnlyAlertOnce(true)
+            // Its own group, so Android doesn't bundle it with announcements, which would hide
+            // the STOP buttons behind the bundle.
+            .setGroup(GROUP_STATUS)
         for (button in status.buttons) {
             // Request codes 2 and 3: distinct from Stop ringing (1) and the repost (4).
             val pending = serviceAction(button.action, 2 + button.ordinal)
@@ -646,9 +653,11 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         private const val ACTION_STOP_RING = "org.intfar.mabridge.STOP_RING"
         private const val ACTION_REPOST_STATUS = "org.intfar.mabridge.REPOST_STATUS"
         private const val CH_STATUS = "mab_status_v2"
-        /** The silent status channel before 0.2.1, which lock screens hide by default. */
+        /** The silent status channel used before mab_status_v2; lock screens hide it by default. */
         private const val CH_STATUS_OLD = "mab_status"
         private const val CH_ANNOUNCE = "mab_announce"
+        private const val GROUP_STATUS = "mab_status"
+        private const val GROUP_RING = "mab_ring"
         private const val STATUS_NOTIFICATION = 1
         private const val RING_NOTIFICATION = 2
         private const val RING_MS = 30_000L
