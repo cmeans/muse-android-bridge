@@ -12,7 +12,7 @@ Replace the Tasker pilot with one small Android app that implements
 - subscribe to the device's owner and family ntfy topics;
 - accept only exact registry commands;
 - apply the 120-second TTL, 24-hour message-ID dedup, exact registry
-  match and STOP gates, in that order (PROTOCOL v0.2 §5; the Tasker pilot
+  match and STOP gates, in that order (PROTOCOL v0.3 §5; the Tasker pilot
   checked STOP first);
 - announce every accepted action on the phone;
 - launch the target app, or perform `ring find`;
@@ -76,8 +76,9 @@ TTL, dedup and malformed input; what follows is still open):
 
 - prove reconnect/backoff over long runs (6 h and more), Doze, NordVPN,
   and 48-hour battery cost (locking the phone passed on 2026-11-12, for
-  launches and rings; whether a locked phone shows a launched app like
-  Meet usefully is device test B2);
+  launches and rings, and again with the protocol 0.3 launch check;
+  whether a locked phone shows a launched app like Meet usefully is
+  device test B2);
 - a reproducible signing setup (the Gradle wrapper is generated and
   pinned).
 

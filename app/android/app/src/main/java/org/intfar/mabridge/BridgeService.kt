@@ -14,6 +14,8 @@ import android.media.RingtoneManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
@@ -25,9 +27,12 @@ import org.intfar.mabridge.protocol.Command
 import org.intfar.mabridge.protocol.Decision
 import org.intfar.mabridge.protocol.Gate
 import org.intfar.mabridge.protocol.PILOT_REGISTRY
+import org.intfar.mabridge.protocol.RateLimiter
+import org.intfar.mabridge.protocol.StaleReceipts
 import org.intfar.mabridge.protocol.Receipts
 import org.intfar.mabridge.protocol.StopState
 import org.intfar.mabridge.protocol.parseNtfyLine
+import org.intfar.mabridge.protocol.parseNtfyOpenTime
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
@@ -45,8 +50,9 @@ import kotlin.concurrent.thread
  * topics; every line goes through parseNtfyLine and Gate.decide (every gate
  * decision: topic, TTL, dedup, registry, STOP), and this class carries out the
  * Decision: announce, launch or ring, post the receipt, append to the log. The
- * action-time receipts (not-installed, cannot-announce, failed) are decided
- * here and are covered by the device tests, not the JVM tests.
+ * action-time receipts (not-installed, cannot-announce, cannot-launch, blocked,
+ * failed, rate-limited) are decided here and are covered by the device tests;
+ * the rate limit and stale cap logic (RateLimiter, StaleReceipts) by JVM tests.
  */
 class BridgeService : Service(), TextToSpeech.OnInitListener {
 
@@ -58,6 +64,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     @Volatile private var ringGeneration = 0
     private var savedAlarmVolume: Int? = null
     private lateinit var gate: Gate
+    private val limiter = RateLimiter()
+    private val stale = StaleReceipts()
     private lateinit var acks: ExecutorService
     private val logLock = Any()
 
@@ -108,6 +116,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     override fun onDestroy() {
         val wasRunning = running
         running = false
+        flushBacklog()
         Config.prefs(this).edit().putBoolean("service_running", false).apply()
         conn?.disconnect()
         stopRinging("bridge stopped")
@@ -160,6 +169,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                         }
                     } finally {
                         backoff.streamEnded(SystemClock.elapsedRealtime() - openedAt)
+                        flushBacklog()
                     }
                     if (running) log("stream ended")
                 }
@@ -184,20 +194,96 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     // ---- protocol -----------------------------------------------------------
 
     private fun handle(line: String) {
-        val msg = parseNtfyLine(line) ?: return // keepalive, open, or not a usable message
+        parseNtfyOpenTime(line)?.let { openTime ->
+            // A new subscription: cached messages older than this are a replayed backlog (§6).
+            flushBacklog()
+            stale.connected(openTime)
+            return
+        }
+        val msg = parseNtfyLine(line) ?: return // keepalive, or not a usable message
         Config.prefs(this).edit().putString(PREF_LAST_ID, msg.id).apply()
         when (val d = gate.decide(msg)) {
             is Decision.Ignore -> log(d.log)
             is Decision.DropDuplicate -> log(d.log)
-            is Decision.DropStale -> { log(d.log); ack(d.receipt) }
-            is Decision.Reject -> { log(d.log); ack(d.receipt) }
+            is Decision.DropStale -> {
+                log(d.log)
+                // A long outage can replay many cached messages: cap their receipts so the
+                // receipt for a fresh command isn't queued behind them all (§6).
+                if (stale.shouldSend(msg.timeSec)) ack(d.receipt)
+            }
+            is Decision.Reject -> { flushBacklog(); log(d.log); ack(d.receipt) }
             is Decision.Run -> try {
+                flushBacklog()
+                // Monotonic: a wall-clock correction mustn't strand the limiter's times (§3).
+                val now = SystemClock.elapsedRealtime()
+                if (!limiter.allows(d.channel, d.command, now)) {
+                    // One receipt per channel and kind per window; a looping publisher's
+                    // repeats are logged only, so they can't fill the receipt queue (§6).
+                    val receipt = limiter.shouldReceiptRefusal(d.channel, d.command, now)
+                    if (receipt) ack(Receipts.rateLimited(d.command))
+                    log("rate-limited (${d.channel.name.lowercase()}): ${d.command.text}${if (receipt) "" else " (no receipt: one already sent this window)"}")
+                    return
+                }
+                // Every command past STOP counts, whatever it then does (§3, §6).
+                limiter.record(d.channel, d.command, now)
                 run(d.command, d.channel)
             } catch (e: Exception) {
                 // One failed action mustn't drop the subscription; it isn't retried (§5).
                 ack(Receipts.failed(d.command))
                 log("failed (${d.channel.name.lowercase()}): ${d.command.text}: ${e.javaClass.simpleName}")
             }
+        }
+    }
+
+    /** The replayed backlog is over: log how many stale receipts it left unsent (#8). */
+    private fun flushBacklog() {
+        stale.flush().let { if (it > 0) log("stale backlog: $it dropped-stale receipts not sent") }
+    }
+
+    /** Whether the owner gave the app usage access, which the launch check needs. */
+    private fun hasUsageAccess(): Boolean = Config.hasUsageAccess(this)
+
+    /**
+     * Whether [pkg] is in front within FOREGROUND_CHECK_MS of [sinceMs] (#7): the most recent
+     * activity Android resumed, in the usage events it records, belongs to [pkg]. That also
+     * covers an app that was already in front, which a launch just brings forward without a
+     * new resume. Null when it can't tell: no usage access, no app resumed in the last
+     * 24 h, the check itself failed, or the bridge is stopping. The log says which.
+     */
+    private fun reachedForeground(pkg: String, sinceMs: Long): Boolean? {
+        if (!hasUsageAccess()) return null
+        val usm = getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
+        val deadline = SystemClock.elapsedRealtime() + FOREGROUND_CHECK_MS
+        fun lastResumed(fromMs: Long, toMs: Long): String? {
+            val events = usm.queryEvents(fromMs, toMs)
+            val e = UsageEvents.Event()
+            var last: String? = null
+            while (events.hasNextEvent()) {
+                events.getNextEvent(e)
+                if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) last = e.packageName
+            }
+            return last
+        }
+        try {
+            // Which app was in front before the launch: read once, over a long window, so an
+            // app on screen for hours (a long call, a phone left locked) still counts.
+            val before = lastResumed(sinceMs - FOREGROUND_LOOKBACK_MS, sinceMs - 1_000)
+            while (true) {
+                val front = lastResumed(sinceMs - 1_000, System.currentTimeMillis() + 1_000) ?: before
+                if (front == pkg) return true
+                if (!running) return null // stopping: don't hold up onDestroy
+                // No app resumed at all in the last 24 h (the phone sat idle that long, or
+                // keeps no usage history): the check can't tell, so unverified, not blocked.
+                if (SystemClock.elapsedRealtime() >= deadline) {
+                    if (front == null) log("launch check: no app resumed in 24 h; unverified")
+                    return if (front == null) null else false
+                }
+                Thread.sleep(250)
+            }
+        } catch (e: Exception) {
+            // The launch was sent; a failed check makes it unverified, not failed.
+            log("launch check failed: ${e.javaClass.simpleName}")
+            return null
         }
     }
 
@@ -209,6 +295,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         return nm.areNotificationsEnabled() && ch != null && ch.importance != NotificationManager.IMPORTANCE_NONE
     }
 
+    /** Carries out a command that passed the gate and the rate limit, and posts its receipt. */
     private fun run(command: Command, channel: Channel) {
         val who = if (channel == Channel.OWNER) "the owner channel" else "family"
         val name = channel.name.lowercase()
@@ -233,14 +320,30 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                     return
                 }
                 if (!Settings.canDrawOverlays(this)) {
-                    // Android blocks activity starts from the background without it.
-                    log("warning: 'Display over other apps' is off; the launch may be blocked")
+                    // Android blocks activity starts from the background without it (#7).
+                    ack(Receipts.cannotLaunch(command))
+                    log("cannot-launch ($name): ${command.text}: 'Display over other apps' is off")
+                    return
                 }
                 announce("Opening ${app.displayName}: asked by $who")
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                val startedAt = System.currentTimeMillis()
                 startActivity(intent)
-                ack(Receipts.ok(command))
-                log("ok ($name): ${command.text}")
+                when (reachedForeground(app.pkg, startedAt)) {
+                    false -> {
+                        ack(Receipts.blocked(command))
+                        log("blocked ($name): ${command.text}: didn't come to the front within ${FOREGROUND_CHECK_MS / 1000} s")
+                    }
+                    true -> {
+                        ack(Receipts.ok(command))
+                        log("ok ($name): ${command.text}")
+                    }
+                    null -> {
+                        ack(Receipts.ok(command))
+                        log("ok ($name): ${command.text} (unverified${if (hasUsageAccess()) "" else ": no usage access"})")
+                    }
+                }
+                return
             }
             Command.RingFind -> {
                 announce("Ringing so you can find the phone: asked by $who")
@@ -256,12 +359,14 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 val bm = getSystemService(BATTERY_SERVICE) as BatteryManager
                 val battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
-                ack(Receipts.status(battery, version, PROTOCOL_VERSION, stopState()))
+                ack(Receipts.status(battery, version, PROTOCOL_VERSION, stopState(), launchCheck = hasUsageAccess()))
                 log("ok ($name): ${command.text}")
+                return
             }
             Command.BootstrapRustdesk, Command.UpdateRustdesk -> {
                 ack(Receipts.notImplemented(command))
                 log("not-implemented ($name): ${command.text}")
+                return
             }
         }
     }
@@ -289,10 +394,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     /**
      * Rings at full alarm volume, looping, for 30 s or until Stop ringing, STOP all,
-     * or (for a family ring) STOP family. False if the phone has no sound to play.
-     * A `ring find` while one is ringing keeps the current ring and its end time,
-     * so a publisher repeating the command can't keep the phone ringing.
-     * True only once the ringtone player reports playing, which is as close to
+     * or (for a family ring) STOP family. False if no sound started playing.
+     * A `ring find` while one is ringing keeps the current ring and its end time
+     * (true; it still counted toward the rate limit, like every ring find past STOP).
+     * A new ring is true only once the ringtone player reports playing, which is as close to
      * "audible" as the app can check (Do Not Disturb or OEM audio policy may
      * still silence it). The play check waits outside the service's lock, so a
      * Stop ringing tap isn't held up by it.
@@ -401,8 +506,13 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun ack(text: String) {
-        if (acks.isShutdown) return
-        acks.execute {
+        if (acks.isShutdown) {
+            // The service is stopping (e.g. during a launch check): say so, don't drop it silently.
+            log("receipt not sent, bridge stopping: $text")
+            return
+        }
+        try {
+            acks.execute {
             var c: HttpURLConnection? = null
             try {
                 c = URL("${Config.server(this)}/").openConnection() as HttpURLConnection
@@ -421,6 +531,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             } finally {
                 c?.disconnect()
             }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // Shut down between the check above and here.
+            log("receipt not sent, bridge stopping: $text")
         }
     }
 
@@ -457,7 +571,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     companion object {
-        const val PROTOCOL_VERSION = "0.2"
+        const val PROTOCOL_VERSION = "0.3"
         const val LOG_FILE = "bridge.log"
         private const val ACTION_STOP_RING = "org.intfar.mabridge.STOP_RING"
         private const val CH_STATUS = "mab_status"
@@ -465,6 +579,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         private const val STATUS_NOTIFICATION = 1
         private const val RING_NOTIFICATION = 2
         private const val RING_MS = 30_000L
+        /** How long a launched app has to come to the front before the launch counts as blocked. */
+        private const val FOREGROUND_CHECK_MS = 5_000L
+        /** How far back the launch check reads usage events, to see an app that was already in front. */
+        private const val FOREGROUND_LOOKBACK_MS = 24 * 60 * 60_000L
         /** How long a ring may take to start playing before it counts as failed. */
         private const val PLAY_CHECK_MS = 1_000L
         private const val PREF_LAST_ID = "last_message_id"

@@ -1,8 +1,8 @@
 # Tasker executor — build sheet (pilot: owner-phone)
 
 > Frozen research (2026-11-12): the native app replaces this executor. Where
-> this sheet differs from PROTOCOL.md v0.2 (check order, receipt wording),
-> PROTOCOL wins.
+> this sheet differs from PROTOCOL.md v0.3 (check order, receipt wording,
+> rate limits, launch checks), PROTOCOL wins.
 
 > **Owner constraint (maintainer, 2026-11-11, after working the pilot
 > setup):** this is too much for the phone's owner. Correct — and by

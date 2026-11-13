@@ -164,6 +164,11 @@ class MainActivity : Activity() {
             }
         })
         root.addView(Button(this).apply {
+            text = "Allow checking launches (Usage access)"
+            // Without it a launch still runs, but its receipt can't confirm the app came to the front.
+            setOnClickListener { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+        })
+        root.addView(Button(this).apply {
             text = "Allow background running (battery)"
             setOnClickListener {
                 startActivity(
@@ -195,7 +200,8 @@ class MainActivity : Activity() {
             "last connected " + SimpleDateFormat("MMM d HH:mm", Locale.US).format(Date(last))
         val overlay = if (!Settings.canDrawOverlays(this))
             "\nOpening apps is not allowed yet (see Setup)." else ""
-        statusView.text = "Bridge ${if (running) "running" else "stopped"}: $channels; $lastText.$overlay"
+        val usage = if (!Config.hasUsageAccess(this)) "\nLaunch checks are off (see Setup)." else ""
+        statusView.text = "Bridge ${if (running) "running" else "stopped"}: $channels; $lastText.$overlay$usage"
 
         val f = File(filesDir, BridgeService.LOG_FILE)
         logView.text = if (f.exists()) {

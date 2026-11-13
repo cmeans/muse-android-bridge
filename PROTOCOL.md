@@ -1,6 +1,12 @@
 # muse-android-bridge — Wire Protocol
 
-**Version:** 0.2 (DRAFT, 2026-11-12). 0.2 records the packages verified on the
+**Version:** 0.3 (DRAFT, 2026-11-12). 0.3 adds the `cannot-launch`,
+`blocked` and `rate-limited` receipts (§6), per-channel rate limits
+(§3, §5), a cap on `dropped-stale` receipts for a replayed backlog
+(§6), and `launch-check` in `status report`; Chris decided the receipts,
+limits and cap on issues #7 and #8 on 2026-11-12, and the details
+(what counts toward a limit, `launch-check`) come from review the same
+day. 0.2 records the packages verified on the
 pilot phone (§4.3), fixes the receipt list (§6), and states that a channel
 disabled by STOP still marks a message as seen (§5); the maintainer approved
 those on 2026-11-12. Five more came from review on the same day, and the
@@ -91,8 +97,11 @@ Rules:
 - The phone's credential is read-mostly by design: stealing it lets an
   attacker *watch* commands and *forge receipts*, never issue commands.
 - A leaked publisher token can only fire registry commands on one channel of
-  one phone. Worst case is an app opening. Revocation = rotate that token /
-  disable that user; the other channel is unaffected.
+  one phone. Worst case is apps opening and the phone ringing at full alarm
+  volume, repeatedly, until the owner flips a STOP switch; the per-channel
+  rate limits (at most 3 `ring find` and 10 launches per 10 minutes) bound
+  how often. Revocation = rotate that token / disable that user; the other
+  channel is unaffected.
 - Credentials live with the publishers (agent secret storage, family
   members' password managers). The phone's owner never handles, sees, or
   types a credential for the owner channel.
@@ -144,12 +153,16 @@ On receiving a message, an executor MUST:
    recorded as seen here, stale or not and before any later check, so a
    copy redelivered after a STOP is lifted, or after the phone's clock is
    corrected, cannot run, and a second copy gets no second receipt. A
-   stale message is logged and gets a `dropped-stale` receipt (§6); a
-   duplicate is logged only, since the first receipt stands.
+   stale message is logged and gets a `dropped-stale` receipt (§6; at
+   most 5 for a backlog replayed on reconnect); a duplicate is logged
+   only, since the first receipt stands.
 2. Match the body against the registry for that channel. No match → publish
    `err unknown-command` receipt, take no other action. Never attempt to
    interpret, complete, or "helpfully" parse a non-registry body.
 3. Check the channel's local enable state (§7). Disabled → `err <command> disabled`.
+   Then the channel's rate limit (§3): over it → `err <command> rate-limited`
+   (the first refusal of a run; repeats are logged only, §6), with no
+   announcement or action, and the refused command doesn't count.
 4. Announce on the phone *before* acting: a persistent visual banner plus
    spoken announcement where the executor supports it, naming the action and
    the channel — e.g. "Opening Meet — asked by family." The phone's owner
@@ -173,19 +186,44 @@ err <command> disabled             channel off by STOP (§7)
 err <command> not-implemented      bootstrap rustdesk / update rustdesk until Phase 3
 err <command> cannot-announce      the phone can't show the announcement (§5.4), so nothing was done
 err <command> failed               the action couldn't run (e.g. no sound to ring); not retried
+err <command> cannot-launch        launch only; "Display over other apps" is off, so Android would block it; nothing was done
+err <command> blocked              launch only; announced and sent, but the app wasn't seen in front within 5 s; it may still appear (don't resend at once)
+err <command> rate-limited         over the channel's limit (§3): 3 ring find or 10 launches per 10 minutes; nothing was done
 err unknown-command                never echoes the body
 dropped-stale <command>            stale and a registry command on its channel
 dropped-stale                      stale and not a registry command
-ok status report battery=<n> version=<app version> protocol=<version> owner=<on|off> family=<on|off>
+ok status report battery=<n> version=<app version> protocol=<version> owner=<on|off> family=<on|off> launch-check=<on|off>
 ```
 
 A duplicate gets no receipt, including a replayed copy of a message already
 handled that is now older than 120 s (its first receipt stands).
-`dropped-stale` receipts are also published when connectivity allows.
+`dropped-stale` receipts are also published when connectivity allows. A
+backlog replayed on reconnect (cached messages older than the server
+time of the subscription's `open` event) gets at most 5; the rest are
+logged only, with a count, so the receipt for a fresh command isn't
+queued behind them. A stale message that arrives live (a phone clock
+that's off, for instance) always gets its receipt.
+
+The rate limits (§3) count every `ring find` and launch that passes the
+STOP check, whatever it then does: one that joins a ring already going
+still announces, so it counts, and so does a launch of an app that isn't
+installed. A command refused by the limit doesn't count. The first
+refusal of a run (per channel and kind) gets a `rate-limited` receipt;
+the run's repeats within the window are logged only, and a command that
+runs again starts a new run. The limits are counted since the executor
+last started. Receipts for messages the limit never sees
+(`unknown-command`, `disabled`) are not capped yet.
 
 Receipts confirm what the *executor did*, not what the user did next
 (`ok launch meet` means Meet came to the foreground, not that anyone
-joined a call).
+joined a call). The executor checks that through Android's usage events,
+which needs the owner to grant usage access; an app already in front
+counts, and so does one opened behind the lock screen. Without usage
+access, `ok launch` means the launch was sent and not refused, the
+executor's log says it was unverified, and `status report` says
+`launch-check=off`. Even with usage access, an `ok launch` is unverified
+when the check can't tell (no app resumed in the last 24 h, or the check
+failed); the log says so and why.
 
 ## 7. On-phone controls (owner sovereignty)
 

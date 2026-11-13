@@ -154,6 +154,9 @@ class GateTest {
     @Test fun failureReceipts() {
         assertEquals("err ring find failed", Receipts.failed(Command.RingFind))
         assertEquals("err launch meet cannot-announce", Receipts.cannotAnnounce(Command.Launch("meet")))
+        assertEquals("err launch meet cannot-launch", Receipts.cannotLaunch(Command.Launch("meet")))
+        assertEquals("err launch meet blocked", Receipts.blocked(Command.Launch("meet")))
+        assertEquals("err ring find rate-limited", Receipts.rateLimited(Command.RingFind))
     }
 
     @Test fun receiptWording() {
@@ -164,12 +167,12 @@ class GateTest {
 
     @Test fun statusReceipt() {
         assertEquals(
-            "ok status report battery=87 version=0.1.0 protocol=0.2 owner=on family=off",
-            Receipts.status(87, "0.1.0", "0.2", StopState(all = false, family = true)),
+            "ok status report battery=87 version=0.1.0 protocol=0.2 owner=on family=off launch-check=on",
+            Receipts.status(87, "0.1.0", "0.2", StopState(all = false, family = true), launchCheck = true),
         )
         assertEquals(
-            "ok status report battery=5 version=0.1.0 protocol=0.2 owner=off family=off",
-            Receipts.status(5, "0.1.0", "0.2", StopState(all = true, family = false)),
+            "ok status report battery=5 version=0.1.0 protocol=0.2 owner=off family=off launch-check=off",
+            Receipts.status(5, "0.1.0", "0.2", StopState(all = true, family = false), launchCheck = false),
         )
     }
 

@@ -45,4 +45,11 @@ class NtfyEventTest {
         val line = real.replace("launch meet", "a".repeat(1_000_000))
         assertEquals(1_000_000, parseNtfyLine(line)?.body?.length)
     }
+
+    @Test fun openEventGivesItsServerTime() {
+        assertEquals(1794531324L, parseNtfyOpenTime("""{"id":"x","time":1794531324,"event":"open","topic":"a,b"}"""))
+        assertNull(parseNtfyOpenTime("""{"id":"x","time":1794531324,"event":"message","topic":"a","message":"b"}"""))
+        assertNull(parseNtfyOpenTime("""{"event":"open","time":"soon"}"""))
+        assertNull(parseNtfyOpenTime("not json"))
+    }
 }
