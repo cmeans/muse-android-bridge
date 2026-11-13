@@ -1,33 +1,38 @@
-# Tasker executor — build sheet (pilot: chris-razr)
+# Tasker executor — build sheet (pilot: pilot-phone)
 
 > Frozen research (2026-11-12): the native app replaces this executor. Where
 > this sheet differs from PROTOCOL.md v0.3 (check order, receipt wording,
 > rate limits, launch checks), PROTOCOL wins.
 
-> **Peggy constraint (Chris, 2026-11-11, after working the pilot setup
-> himself):** "this is too much for Peggy." Correct — and by design she
-> never sees any of it. Everything in this sheet is helper-side work,
-> done by Chris/Michele, ideally in one in-person setup visit. Peggy's
-> entire surface is: open Muse, ask for help, tap Start service /
-> Start now when her Muse asks, and the STOP scenes. No imports, no
-> settings, no Tasker UI, ever. Corollary: her phone's configuration
-> must be treated as frozen once delivered — no design step may depend
-> on her re-importing, updating, or reconfiguring anything. This is
-> also the strongest argument yet for the native app on her device:
-> store install + self-update beats helper-maintained Tasker XML, so
-> the app-at-parity swap matters most for the Peggy phase, not the pilot.
+> **Owner constraint (maintainer, 2026-11-11, after working the pilot
+> setup themselves):** "This is too much for the phone's owner."
+> Correct — and by design the owner never sees any of it. Everything in this sheet is
+> helper-side work, done by a family helper, ideally in one in-person
+> setup visit. The owner's entire surface is: open Muse, ask for help,
+> tap Start service / Start now when their Muse asks, and the STOP
+> scenes. No imports, no settings, no Tasker UI, ever. Corollary: the
+> owner's phone configuration must be treated as frozen once delivered —
+> no design step may depend on the owner re-importing, updating, or
+> reconfiguring anything. This is also the strongest argument yet for
+> the native app on the owner's device: store install + self-update
+> beats helper-maintained Tasker XML, so the app-at-parity swap matters
+> most for the owner phase, not the pilot.
 
 Build interactively on the phone (Tasker's UI generates valid project XML;
 hand-written XML is import-fragile). This sheet is the exact logic to enter,
 from PROTOCOL.md. Export the finished project to `tasker/` in this repo.
 
+The exported `tasker/*.xml` files are the reference deployment's: they name
+its own server and device slug, not `mab-pilot-phone-*`. Edit both before
+importing them anywhere else.
+
 ## On-phone prerequisites (session checklist)
 
-1. Tasker installed from Play, bought on Chris's account (Family Library
+1. Tasker installed from Play, bought on a family helper's account (Family Library
    source for later phases).
-2. ntfy app: subscribe to `mab-chris-razr-owner` and `mab-chris-razr-family`
+2. ntfy app: subscribe to `mab-pilot-phone-owner` and `mab-pilot-phone-family`
    (pilot may ride the existing admin sign-in; the dedicated
-   `chris-razr-phone` credential is for family devices — its scope is
+   `pilot-phone-phone` credential is for family devices — its scope is
    already verified server-side, test F2). **Mute both topics** so commands
    don't pile up as notifications; the broadcast intent still fires.
 3. Battery: exempt Tasker and the ntfy app from battery optimization

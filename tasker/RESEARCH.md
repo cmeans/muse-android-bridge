@@ -62,7 +62,7 @@ two command topics, cannot publish to them (403), cannot read the ack topic
 or unrelated topics (403). F2's remaining piece is doing it from a second
 device rather than the server itself.
 
-## A1 device confirmation (2026-11-11 22:34 CT, Chris's Razr+)
+## A1 device confirmation (2026-11-11 22:34 CT, the pilot phone)
 
 - Import dialect settled by trial: **classic export structure works** —
   `<EventCat sr="con0" ve="2">` in the profile, named task with `<pri>`,
@@ -76,8 +76,10 @@ device rather than the server itself.
   (official catalog). v4 shipped 0 and silently did nothing; v5 with 1
   opened the ntfy subscribe screens via `ntfy://` deep links, and both
   bridge topics were subscribed with two taps total, zero typing.
-- **Receive path CONFIRMED live**: messages published to both
-  `mab-chris-razr-owner` (`launch meet`) and `mab-chris-razr-family`
+- **Receive path CONFIRMED live** (topic names here are the generic
+  example; the live test used the reference deployment's own slug, see
+  `server/ntfy-provisioning.md`): messages published to both
+  `mab-pilot-phone-owner` (`launch meet`) and `mab-pilot-phone-family`
   (`launch whatsapp`) produced the probe Flash with `%topic` and
   `%message` correctly resolved. Cached messages were also delivered on
   subscribe (owner topic showed all 3 earlier tests) — the TTL/dedup

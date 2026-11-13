@@ -1,19 +1,24 @@
-# ntfy provisioning — pilot device `chris-razr`
+# ntfy provisioning — pilot device `pilot-phone`
 
-Server: Chris's existing ntfy on CT 104 (Holodeck). Provisioned 2026-11-11
-with Chris's go. No service restart was needed or performed — user/ACL
-changes are live database operations.
+> A record of the reference deployment's provisioning, written as a worked
+> example. Device names, users and credential variable names are generic
+> examples (the live server uses its own); hosts and paths are that
+> deployment's. Substitute your own throughout.
+
+Server: the server operator's existing ntfy on CT 104 (Holodeck).
+Provisioned 2026-11-11 with the maintainer's go. No service restart was
+needed or performed — user/ACL changes are live database operations.
 
 ## Principals and grants (per PROTOCOL.md §3)
 
-| Principal | mab-chris-razr-owner | mab-chris-razr-family | mab-chris-razr-ack |
+| Principal | mab-pilot-phone-owner | mab-pilot-phone-family | mab-pilot-phone-ack |
 |---|---|---|---|
-| `chris-razr-phone` (user, on-phone credential) | read-only | read-only | write-only |
-| `muse` (Chris's Muse, existing token) | write-only | — | read-only |
-| `chris` (admin) | full (admin role) | full | full |
+| `pilot-phone-phone` (user, on-phone credential; `<device>-phone` per PROTOCOL §3) | read-only | read-only | write-only |
+| `muse` (the server operator's Muse, existing token) | write-only | — | read-only |
+| `admin` (admin) | full (admin role) | full | full |
 
 Credential values live only in CT 104 `/root/ntfy-creds.txt` (0600) as
-`RAZR_PHONE_USER` / `RAZR_PHONE_PASSWORD`. Muse's token is unchanged at
+`PILOT_PHONE_USER` / `PILOT_PHONE_PASSWORD`. Muse's token is unchanged at
 `~/.config/ntfy/token` (0600) — the ACL extension applies to the existing
 token because grants attach to the user.
 
@@ -25,26 +30,27 @@ token because grants attach to the user.
 - phone user reads owner topic → receives the message
 - phone user publishes to owner topic → 403
 - phone user publishes receipt to ack → 200; reads ack → 403
-- phone user reads family topic → 200; reads Chris's alert topic → 403 (no grant)
+- phone user reads family topic → 200; reads the server operator's alert topic → 403 (no grant)
 - muse token reads ack topic → receives `ok launch meet`
 
 ## Still to provision at later phases
 
-- Michele as a family publisher (write family / read ack) when her phone
-  or her helper access is set up.
-- `mab-michele-*` and `mab-peggy-*` topic families at their phases.
+- A family helper as a family publisher (write family / read ack) when
+  their phone or their helper access is set up.
+- `mab-helper-pixel-*` and `mab-alex-phone-*` topic families at their
+  phases.
 - The phone-side subscription: on the pilot phone, the ntfy app (or the
-  executor) subscribes with the `chris-razr-phone` user against
+  executor) subscribes with the `pilot-phone-phone` user against
   https://ntfy.intfar.com — password handed over at setup time, never
   written here.
 
 ## F1 revocation drill (2026-11-11, PASSED)
 
-Throwaway publisher `drill-pub` (write-only on `mab-chris-razr-family`,
+Throwaway publisher `drill-pub` (write-only on `mab-pilot-phone-family`,
 own token), run entirely against the pilot topics:
 
 1. Publish with drill token → **200**.
-2. `ntfy access drill-pub mab-chris-razr-family deny` (the revocation move).
+2. `ntfy access drill-pub mab-pilot-phone-family deny` (the revocation move).
 3. Publish again with the **same, still-valid token** → **403**. ACL denial
    is immediate and beats token validity — revoking a family member does
    not require chasing their token.
