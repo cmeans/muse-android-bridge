@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Turn the `app/android/` spike into a protocol-exact executor of `PROTOCOL.md` that can be installed on the pilot phone (`chris-razr`) and run test groups A and B.
+**Goal:** Turn the `app/android/` spike into a protocol-exact executor of `PROTOCOL.md` that can be installed on the pilot phone (`pilot-phone`) and run test groups A and B.
 
 **Architecture:** All protocol decisions live in plain Kotlin under `org.intfar.mabridge.protocol` (no Android imports), so JVM unit tests cover check order, expiry, duplicates, parsing and receipts. The Android layer (`BridgeService`, `MainActivity`, a Keystore credential store) only does I/O: one ntfy streaming connection, announcing, launching, ringing, logging, posting receipts.
 
@@ -10,7 +10,7 @@
 
 **Spec:** `PROTOCOL.md` (v0.1 when written; this plan's Task 2 makes it v0.2; the contract), `TEST-PLAN.md` groups A and B, `app/DEV-HANDOFF.md`.
 
-## Decisions (Chris approved all three recommendations, 2026-11-12 11:28 CT)
+## Decisions (the maintainer approved all three recommendations, 2026-11-12 11:28 CT)
 
 The documents disagreed, and Task 3's tests encode the answer.
 
@@ -96,7 +96,7 @@ run under `systemd-run --user --scope -p MemoryMax=8G -p MemorySwapMax=0 -p Runt
 
 **Interfaces:** Produces `val PILOT_REGISTRY: Registry` in `protocol/Registry.kt`.
 
-Packages verified on chris-razr over adb on 2026-11-12:
+Packages verified on the pilot phone over adb on 2026-11-12:
 
 | slug | display | package |
 |---|---|---|
@@ -112,7 +112,7 @@ Packages verified on chris-razr over adb on 2026-11-12:
 - [ ] **Step 3: Implement `PILOT_REGISTRY`.** Remove `REGISTRY`, `FAMILY_COMMANDS` and `LAUNCHABLE` from `Config.kt`.
 - [ ] **Step 4: PROTOCOL.md.** Set the `meet` and `muse` packages in §4.3. Write the D1 order into §5 and the D2 receipt list into §6 as decided. Bump the version to 0.2 with a dated line (§9 requires it for a registry change). Mark §10 item 4 resolved.
 - [ ] **Step 5: `tasker/EXECUTOR.md`.** Add one line under the title: the Tasker sheet is frozen research, and where it differs from PROTOCOL v0.2 (order, receipts), PROTOCOL wins.
-- [ ] **Step 6: Run tests, expect PASS. Commit** `registry: packages verified on chris-razr; PROTOCOL v0.2`.
+- [ ] **Step 6: Run tests, expect PASS. Commit** `registry: packages verified on the pilot phone; PROTOCOL v0.2`.
 
 ### Task 3: The check pipeline
 
@@ -141,7 +141,7 @@ Order (with D1 as recommended): topic → expiry → duplicate → parse → STO
   - `stopAllRejectsBoth`
   - `stoppedMessageIsStillMarkedSeen`: a family message under STOP family → `Reject`; turn STOP off and send the same id again → `DropDuplicate` (Review Focus 2)
   - `unknownCommand`: `"launch meet now"` → `Reject("err unknown-command")`, and the receipt never contains the body
-  - `wrongTopicIgnored`: topic `mab-chris-razr-ack` or `mab-other-owner` → `Ignore`, no receipt
+  - `wrongTopicIgnored`: topic `mab-pilot-phone-ack` or `mab-other-owner` → `Ignore`, no receipt
   - `blankIdRejected`: `id = ""` → `Ignore`, no action (Review Focus 3)
   - `rustdeskNotImplemented`: owner `bootstrap rustdesk` → `Run(BootstrapRustdesk, OWNER)`, and `Receipts.notImplemented(BootstrapRustdesk) == "err bootstrap rustdesk not-implemented"`
   - `statusReceipt`: `Receipts.status(87, "0.1.0", "0.2", StopState(false, true)) == "ok status report battery=87 version=0.1.0 protocol=0.2 owner=on family=off"`
@@ -169,7 +169,7 @@ Order (with D1 as recommended): topic → expiry → duplicate → parse → STO
 
 - [ ] **Step 1: Implement** an AES-256-GCM key in `AndroidKeyStore` (alias `mab_cred_v1`, not exportable), and store only the IV and ciphertext in prefs. Don't use `androidx.security:security-crypto`, which is deprecated, and adds a dependency.
 - [ ] **Step 2: Setup screen:** the password field is write-only. After saving it shows "Password saved", never the value. Saving again replaces it.
-- [ ] **Step 3: Verify on a device** (Keystore isn't available in JVM tests). This step runs with Task 8's install and needs Chris's go. Check: save, restart the service, it subscribes; `adb shell run-as org.intfar.mabridge cat shared_prefs/mabridge.xml` shows no plaintext password.
+- [ ] **Step 3: Verify on a device** (Keystore isn't available in JVM tests). This step runs with Task 8's install and needs the maintainer's go. Check: save, restart the service, it subscribes; `adb shell run-as org.intfar.mabridge cat shared_prefs/mabridge.xml` shows no plaintext password.
 - [ ] **Step 4: Commit** `app: Keystore-backed phone credential`.
 
 ### Task 6: Service wiring
@@ -206,12 +206,12 @@ Order (with D1 as recommended): topic → expiry → duplicate → parse → STO
 - [ ] **Step 3:** Setup fields: server, device slug, username, and the password (Task 5). It refuses to start the service until all four are set.
 - [ ] **Step 4:** `assembleDebug` passes. **Commit** `app: owner screen with STOP switches and log`.
 
-### Task 8: Pilot install and device gates (each step needs Chris's go)
+### Task 8: Pilot install and device gates (each step needs the maintainer's go)
 
-- [ ] **Step 1:** Chris disables the Tasker MAB profile (one executor per phone, §3). Confirm by sending `status report` and getting no Tasker receipt.
-- [ ] **Step 2:** `adb install -r app-debug.apk`. Chris enters the phone credential on the setup screen. Then Task 5 Step 3.
+- [ ] **Step 1:** The maintainer disables the Tasker MAB profile (one executor per phone, §3). Confirm by sending `status report` and getting no Tasker receipt.
+- [ ] **Step 2:** `adb install -r app-debug.apk`. The maintainer enters the phone credential on the setup screen. Then Task 5 Step 3.
 - [ ] **Step 3:** Run B1, B3, B4, B6 and A3, A4 from TEST-PLAN.md. Record the results in `tasker/RESEARCH.md`'s successor, `app/DEVICE-RESULTS.md`.
 - [ ] **Step 4:** A1, A2 and A5 (a day of commands, VPN on and off, 48 h of battery), then B2 and B5.
 - [ ] **Step 5:** Update `app/DEV-HANDOFF.md` and the README status with the results.
 
-Release signing (a kept key, so later builds update in place) is a separate small PR before any phone other than chris-razr. It's out of scope here.
+Release signing (a kept key, so later builds update in place) is a separate small PR before any phone other than the pilot phone. It's out of scope here.

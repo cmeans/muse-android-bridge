@@ -33,11 +33,11 @@ rollout decisions) is also the server operator.
 | Bridge executor (Tasker pilot → native `muse-android-bridge` app) | Implements `PROTOCOL.md`: subscribes to the two command topics, executes the whitelist, announces + logs, provides the on-phone STOP controls. |
 | RustDesk (host mode) | The screen-and-control endpoint. Service stays OFF until the owner starts it — starting it *is* the request for a control session. |
 
-### 3.2 Shared family infrastructure (the server operator's Holodeck)
+### 3.2 Shared family infrastructure (the server operator's home server)
 
 | Component | Job |
 |---|---|
-| ntfy (CT 104, existing) | Bridge command transport. New scoped users/topics only; no new container. |
+| ntfy (an existing container) | Bridge command transport. New scoped users/topics only; no new container. |
 | RustDesk server (1 new LXC) | hbbs (ID/rendezvous) + hbbr (relay). The family's private address list and meeting point: every enrolled device registers only here, under the server key. Public reachability via router forwards (TCP 21115, TCP+UDP 21116, TCP 21117); WebSocket ports closed (browser client snoozed 2026-11-11). No DDNS — clients carry the raw public IP; an IP change is an accepted, known breakage. |
 
 ### 3.3 On the operator's side — the controller
@@ -52,7 +52,7 @@ controller stack in **their own environment**:
 
 | Operator | Controller placement |
 |---|---|
-| The server operator's Muse (test phases; the server operator helping the owner directly) | 1 LXC on Holodeck, tailnet-only, no public ports. |
+| The server operator's Muse (test phases; the server operator helping the owner directly) | 1 LXC on the home server, tailnet-only, no public ports. |
 | The owner's Muse (the end-goal deployment) | Inside the owner's Muse's own computer/VM — no access to the server operator's network required. |
 
 The RustDesk server is shared family infrastructure; controllers are
@@ -62,7 +62,7 @@ RustDesk ID on the phone's whitelist), so each controller is scoped to its
 own operator and treated as a sensitive credential store.
 
 **Variant — hosted controller (deferred decision, raised 2026-11-11):** a
-single family controller on Holodeck, driven remotely by the owner's Muse
+single family controller on the home server, driven remotely by the owner's Muse
 as well as the server operator's, is possible but is NOT the base design,
 because it would require exposing the controller's shim beyond the
 server operator's tailnet and would concentrate every phone's access credentials
@@ -87,7 +87,7 @@ only in **who operates** and **which controller** connects:
 |---|---|---|
 | Operator | A family helper (personally, or the server operator's Muse) | The owner, via their own Muse |
 | Bridge channel used | Family (launch-only) | Owner (full menu) |
-| Controller | The server operator's Holodeck LXC (for the server operator's Muse) or the helper's own laptop (human driving) | The owner's Muse's own environment |
+| Controller | An LXC on the server operator's home server (for the server operator's Muse) or the helper's own laptop (human driving) | The owner's Muse's own environment |
 | Works from | Anywhere with internet — the server and the server operator's controller live at the server operator's home and are always on; the *helpers* do not need to be home | Anywhere the owner is |
 | Phone-side requirement | The owner starts the RustDesk service when asked | The owner starts the RustDesk service when their Muse asks |
 

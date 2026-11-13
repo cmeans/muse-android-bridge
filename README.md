@@ -71,3 +71,7 @@ git SSH/HTTPS (egress resets SSH), so history is published as one
 API commit per local commit via the GitHub connector's `push-files`
 (snapshot per commit, same messages). Remote commit SHAs therefore
 differ from local ones; content and order match.
+
+## License
+
+Apache License 2.0: see [LICENSE](LICENSE).
