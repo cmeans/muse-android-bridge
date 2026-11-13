@@ -30,7 +30,11 @@ import org.intfar.mabridge.protocol.PILOT_REGISTRY
 import org.intfar.mabridge.protocol.RateLimiter
 import org.intfar.mabridge.protocol.StaleReceipts
 import org.intfar.mabridge.protocol.Receipts
+import org.intfar.mabridge.protocol.STOP_PREF_KEYS
+import org.intfar.mabridge.protocol.StopButton
 import org.intfar.mabridge.protocol.StopState
+import org.intfar.mabridge.protocol.statusNotificationFor
+import org.intfar.mabridge.protocol.stopTapFor
 import org.intfar.mabridge.protocol.parseNtfyLine
 import org.intfar.mabridge.protocol.parseNtfyOpenTime
 import org.json.JSONObject
@@ -71,8 +75,19 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // Re-posts the status notification whenever a STOP switch changes, from the owner screen
+    // or the notification itself, so the notification always matches. A field: preferences
+    // hold their listeners weakly.
+    private val stopListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key in STOP_PREF_KEYS) startForegroundWithStatus()
+    }
+
     override fun onCreate() {
         super.onCreate()
+        Config.prefs(this).registerOnSharedPreferenceChangeListener(stopListener)
+        // The status notification moved to a new channel (see startForegroundWithStatus); the
+        // old silent one goes once, here.
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).deleteNotificationChannel(CH_STATUS_OLD)
         tts = TextToSpeech(this, this)
         acks = Executors.newSingleThreadExecutor()
         gate = Gate(
@@ -91,7 +106,22 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundWithStatus("Listening for commands")
+        // The STOP buttons on the status notification: local and owner-only, like the
+        // switches on the owner screen (PROTOCOL §7). Turning them off again is done there.
+        val tap = stopTapFor(intent?.action, stopState())
+        if (tap != null) {
+            // Logged first: the owner screen re-reads the log when the switch changes.
+            log(tap.logLine)
+            Config.prefs(this).edit().putBoolean(tap.button.prefKey, true).apply()
+            if (tap.stopsRinging) stopRinging(tap.button.switchName)
+        }
+        startForegroundWithStatus()
+        // Since Android 14 the owner can swipe the status notification away; it comes straight
+        // back, so the STOP buttons stay on the notification.
+        if (tap != null || intent?.action == ACTION_REPOST_STATUS) {
+            if (!running) stopSelf()
+            return START_STICKY
+        }
         if (intent?.action == ACTION_STOP_RING) {
             stopRinging("Stop ringing tapped")
             // A leftover ring notification can start a service that isn't running.
@@ -114,6 +144,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
+        Config.prefs(this).unregisterOnSharedPreferenceChangeListener(stopListener)
         val wasRunning = running
         running = false
         flushBacklog()
@@ -380,7 +411,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         val n = Notification.Builder(this, CH_ANNOUNCE)
             .setContentTitle("Muse Bridge")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_bridge)
+            .setContentIntent(ownerScreen())
             .setAutoCancel(true)
             .build()
         nm.notify((System.currentTimeMillis() % 100_000).toInt() + 10, n)
@@ -467,8 +499,13 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             Notification.Builder(this, CH_ANNOUNCE)
                 .setContentTitle("Muse Bridge is ringing")
                 .setContentText("Tap Stop ringing to silence it")
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setSmallIcon(R.drawable.ic_bridge)
                 .addAction(Notification.Action.Builder(null, "Stop ringing", stopIntent).build())
+                // Its own group, so Stop ringing isn't bundled behind the announcement before it.
+                .setGroup(GROUP_RING)
+                .setContentIntent(ownerScreen())
+                // Stop ringing must work from the lock screen, whatever it hides.
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setOngoing(true)
                 .build(),
         )
@@ -552,17 +589,57 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
-    private fun startForegroundWithStatus(text: String) {
+    /** Opens the owner screen: tapping a bridge notification brings the app to the front. */
+    private fun ownerScreen(): PendingIntent = PendingIntent.getActivity(
+        this, 0,
+        Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    private fun serviceAction(action: String, requestCode: Int): PendingIntent = PendingIntent.getService(
+        this, requestCode, Intent(this, BridgeService::class.java).setAction(action), PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    /**
+     * The ongoing status notification: what the bridge is doing, a tap to open the owner
+     * screen, and one-tap STOP buttons for whichever channels are still on.
+     */
+    private fun startForegroundWithStatus() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        // Default importance, with no sound or vibration: lock screens hide silent (low)
+        // notifications by default, and the STOP buttons must show there. A channel's
+        // importance can't be raised once created, so this is a new channel; onCreate deletes
+        // the old silent one.
         nm.createNotificationChannel(
-            NotificationChannel(CH_STATUS, "Bridge status", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CH_STATUS, "Bridge status", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
         )
-        val n = Notification.Builder(this, CH_STATUS)
+        val status = statusNotificationFor(stopState())
+        val b = Notification.Builder(this, CH_STATUS)
             .setContentTitle("Muse Bridge")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentText(status.text)
+            .setSmallIcon(R.drawable.ic_bridge)
+            .setContentIntent(ownerScreen())
+            .setDeleteIntent(serviceAction(ACTION_REPOST_STATUS, 4))
+            // Nothing private in it, and the STOP buttons must show on the lock screen even
+            // when the phone hides sensitive notification content there.
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOngoing(true)
-            .build()
+            // Re-posted on every STOP change; only the first post may alert.
+            .setOnlyAlertOnce(true)
+            // Its own group, so Android doesn't bundle it with announcements, which would hide
+            // the STOP buttons behind the bundle.
+            .setGroup(GROUP_STATUS)
+        for (button in status.buttons) {
+            // Request codes 2 and 3: distinct from Stop ringing (1) and the repost (4).
+            val pending = serviceAction(button.action, 2 + button.ordinal)
+            b.addAction(Notification.Action.Builder(null, button.label, pending).build())
+        }
+        val n = b.build()
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(STATUS_NOTIFICATION, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
@@ -574,8 +651,13 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         const val PROTOCOL_VERSION = "0.3"
         const val LOG_FILE = "bridge.log"
         private const val ACTION_STOP_RING = "org.intfar.mabridge.STOP_RING"
-        private const val CH_STATUS = "mab_status"
+        private const val ACTION_REPOST_STATUS = "org.intfar.mabridge.REPOST_STATUS"
+        private const val CH_STATUS = "mab_status_v2"
+        /** The silent status channel used before mab_status_v2; lock screens hide it by default. */
+        private const val CH_STATUS_OLD = "mab_status"
         private const val CH_ANNOUNCE = "mab_announce"
+        private const val GROUP_STATUS = "mab_status"
+        private const val GROUP_RING = "mab_ring"
         private const val STATUS_NOTIFICATION = 1
         private const val RING_NOTIFICATION = 2
         private const val RING_MS = 30_000L

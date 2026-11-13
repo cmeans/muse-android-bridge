@@ -25,8 +25,8 @@ object Config {
 
     fun ackTopic(ctx: Context) = "mab-${deviceSlug(ctx)}-ack"
 
-    fun stopAll(ctx: Context) = prefs(ctx).getBoolean("stop_all", false)
-    fun stopFamily(ctx: Context) = prefs(ctx).getBoolean("stop_family", false)
+    fun stopAll(ctx: Context) = prefs(ctx).getBoolean(org.intfar.mabridge.protocol.PREF_STOP_ALL, false)
+    fun stopFamily(ctx: Context) = prefs(ctx).getBoolean(org.intfar.mabridge.protocol.PREF_STOP_FAMILY, false)
 
     /** A debug build, whose network config also allows plain HTTP to the emulator's host. */
     fun isDebugBuild(ctx: Context): Boolean =
