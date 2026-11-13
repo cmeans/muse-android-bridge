@@ -6,27 +6,37 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StaleReceiptsTest {
+    private val open = 1_800_000_000L
+
     @Test fun aReplayedBacklogGetsFiveReceiptsThenCounts() {
         val s = StaleReceipts()
-        repeat(5) { assertTrue(s.shouldSend()) }
-        repeat(7) { assertFalse(s.shouldSend()) }
-        assertEquals(7, s.suppressed)
+        s.connected(open)
+        // Cached messages: older than the connection's open event.
+        repeat(5) { assertTrue(s.shouldSend(open - 600 + it)) }
+        repeat(7) { assertFalse(s.shouldSend(open - 300 + it)) }
+        assertEquals(7, s.connected(open + 100))
     }
 
-    @Test fun aFreshMessageEndsTheBacklog() {
-        // The cap is for a catch-up replay. Once a live message arrives, later stale ones
-        // (a phone clock that's off, say) get their receipts again: they're the signal.
+    @Test fun liveStaleMessagesAlwaysGetReceipts() {
+        // A phone clock that's off makes every live message stale. They arrive after the
+        // open event, so they're never part of the backlog: their receipts are the sign.
         val s = StaleReceipts()
-        repeat(6) { s.shouldSend() }
-        assertEquals(1, s.freshArrived())
-        repeat(20) { assertTrue(s.shouldSend()) }
+        s.connected(open)
+        repeat(20) { assertTrue(s.shouldSend(open + 1 + it)) }
     }
 
-    @Test fun aNewConnectionStartsOver() {
+    @Test fun aNewConnectionStartsOverAndReportsOnce() {
         val s = StaleReceipts()
-        repeat(8) { s.shouldSend() }
-        assertEquals(3, s.connected())
-        repeat(5) { assertTrue(s.shouldSend()) }
-        assertFalse(s.shouldSend())
+        s.connected(open)
+        repeat(8) { s.shouldSend(open - 100) }
+        assertEquals(3, s.connected(open + 50))
+        assertEquals(0, s.connected(open + 60))
+        repeat(5) { assertTrue(s.shouldSend(open + 10)) }
+        assertFalse(s.shouldSend(open + 10))
+    }
+
+    @Test fun beforeAnyOpenEventNothingIsCapped() {
+        val s = StaleReceipts()
+        repeat(10) { assertTrue(s.shouldSend(open)) }
     }
 }

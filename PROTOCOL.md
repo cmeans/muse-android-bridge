@@ -197,14 +197,18 @@ ok status report battery=<n> version=<app version> protocol=<version> owner=<on|
 A duplicate gets no receipt, including a replayed copy of a message already
 handled that is now older than 120 s (its first receipt stands).
 `dropped-stale` receipts are also published when connectivity allows. A
-backlog replayed on reconnect gets at most 5; the rest are logged only,
-with a count, so the receipt for a fresh command isn't queued behind
-them. The cap ends with the first fresh message: later stale ones (a
-phone clock that's off, for instance) get their receipts again.
+backlog replayed on reconnect (cached messages older than the server
+time of the subscription's `open` event) gets at most 5; the rest are
+logged only, with a count, so the receipt for a fresh command isn't
+queued behind them. A stale message that arrives live (a phone clock
+that's off, for instance) always gets its receipt.
 
-The rate limits (§3) count only commands that acted (an app launched, a
-new ring started): a refused command, an app that isn't installed, or a
-`ring find` that joins a ring already going doesn't use up the budget.
+The rate limits (§3) count only commands that acted: a launch that was
+sent (even one reported `blocked`) or a new ring. A refused command, an
+app that isn't installed, or a `ring find` that joins a ring already
+going doesn't use up the budget. Only the first refusal per channel and
+kind in a window gets a `rate-limited` receipt; repeats are logged
+only. The limits are counted since the executor last started.
 
 Receipts confirm what the *executor did*, not what the user did next
 (`ok launch meet` means Meet came to the foreground, not that anyone

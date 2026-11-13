@@ -69,4 +69,14 @@ class RateLimiterTest {
             assertTrue(r.run(OWNER, Command.BootstrapRustdesk, t + it))
         }
     }
+
+    @Test fun onlyTheFirstRefusalInAWindowGetsAReceipt() {
+        // A looping publisher mustn't queue one rate-limited receipt per message.
+        val r = RateLimiter()
+        assertTrue(r.shouldReceiptRefusal(OWNER, Command.RingFind, t))
+        repeat(50) { assertFalse(r.shouldReceiptRefusal(OWNER, Command.RingFind, t + 1 + it)) }
+        assertTrue("other channel", r.shouldReceiptRefusal(FAMILY, Command.RingFind, t + 2))
+        assertTrue("other kind", r.shouldReceiptRefusal(OWNER, Command.Launch("meet"), t + 3))
+        assertTrue("next window", r.shouldReceiptRefusal(OWNER, Command.RingFind, t + 10 * min))
+    }
 }

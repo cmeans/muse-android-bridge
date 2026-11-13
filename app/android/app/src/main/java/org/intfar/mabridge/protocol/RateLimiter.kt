@@ -40,6 +40,22 @@ class RateLimiter {
         recent(channel, kind, nowMs).addLast(nowMs)
     }
 
+    private val refusalReceipts = HashMap<Pair<Channel, String>, Long>()
+
+    /**
+     * Whether a refused command gets an `err <command> rate-limited` receipt: the first
+     * refusal per channel and kind in a window does, the rest are logged only, so a looping
+     * publisher can't fill the receipt queue.
+     */
+    @Synchronized
+    fun shouldReceiptRefusal(channel: Channel, command: Command, nowMs: Long): Boolean {
+        val (kind, _) = budget(command) ?: return true
+        val last = refusalReceipts[channel to kind]
+        if (last != null && nowMs - last < WINDOW_MS) return false
+        refusalReceipts[channel to kind] = nowMs
+        return true
+    }
+
     companion object {
         const val WINDOW_MS = 10 * 60_000L
         const val RING_LIMIT = 3
