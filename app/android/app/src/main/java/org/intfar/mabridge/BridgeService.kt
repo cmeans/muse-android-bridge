@@ -91,7 +91,24 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForegroundWithStatus("Listening for commands")
+        // The STOP buttons on the status notification: local and owner-only, like the
+        // switches on the owner screen (PROTOCOL §7). Turning them off again is done there.
+        when (intent?.action) {
+            ACTION_STOP_ALL -> {
+                Config.prefs(this).edit().putBoolean("stop_all", true).apply()
+                log("STOP all switched on from the notification")
+                stopRinging("STOP all")
+            }
+            ACTION_STOP_FAMILY -> {
+                Config.prefs(this).edit().putBoolean("stop_family", true).apply()
+                log("STOP family switched on from the notification")
+            }
+        }
+        startForegroundWithStatus()
+        if (intent?.action == ACTION_STOP_ALL || intent?.action == ACTION_STOP_FAMILY || intent?.action == ACTION_REFRESH_STATUS) {
+            if (!running) stopSelf()
+            return START_STICKY
+        }
         if (intent?.action == ACTION_STOP_RING) {
             stopRinging("Stop ringing tapped")
             // A leftover ring notification can start a service that isn't running.
@@ -380,7 +397,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         val n = Notification.Builder(this, CH_ANNOUNCE)
             .setContentTitle("Muse Bridge")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_bridge)
+            .setContentIntent(ownerScreen())
             .setAutoCancel(true)
             .build()
         nm.notify((System.currentTimeMillis() % 100_000).toInt() + 10, n)
@@ -552,17 +570,43 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
-    private fun startForegroundWithStatus(text: String) {
+    /** Opens the owner screen: tapping a bridge notification brings the app to the front. */
+    private fun ownerScreen(): PendingIntent = PendingIntent.getActivity(
+        this, 0,
+        Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    private fun serviceAction(action: String, requestCode: Int): PendingIntent = PendingIntent.getService(
+        this, requestCode, Intent(this, BridgeService::class.java).setAction(action), PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    /**
+     * The ongoing status notification: what the bridge is doing, a tap to open the owner
+     * screen, and one-tap STOP buttons for whichever channels are still on.
+     */
+    private fun startForegroundWithStatus() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(
             NotificationChannel(CH_STATUS, "Bridge status", NotificationManager.IMPORTANCE_LOW)
         )
-        val n = Notification.Builder(this, CH_STATUS)
+        val stop = stopState()
+        val text = when {
+            stop.all -> "All commands stopped. Tap to open."
+            stop.family -> "Listening for owner commands; family stopped. Tap to open."
+            else -> "Listening for commands. Tap to open."
+        }
+        val b = Notification.Builder(this, CH_STATUS)
             .setContentTitle("Muse Bridge")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_bridge)
+            .setContentIntent(ownerScreen())
             .setOngoing(true)
-            .build()
+        if (!stop.all) {
+            if (!stop.family) b.addAction(Notification.Action.Builder(null, "Stop family", serviceAction(ACTION_STOP_FAMILY, 2)).build())
+            b.addAction(Notification.Action.Builder(null, "Stop all", serviceAction(ACTION_STOP_ALL, 3)).build())
+        }
+        val n = b.build()
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(STATUS_NOTIFICATION, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
@@ -574,6 +618,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         const val PROTOCOL_VERSION = "0.3"
         const val LOG_FILE = "bridge.log"
         private const val ACTION_STOP_RING = "org.intfar.mabridge.STOP_RING"
+        private const val ACTION_STOP_ALL = "org.intfar.mabridge.STOP_ALL"
+        private const val ACTION_STOP_FAMILY = "org.intfar.mabridge.STOP_FAMILY"
+        /** Sent by the owner screen after a STOP switch changes, so the notification matches. */
+        const val ACTION_REFRESH_STATUS = "org.intfar.mabridge.REFRESH_STATUS"
         private const val CH_STATUS = "mab_status"
         private const val CH_ANNOUNCE = "mab_announce"
         private const val STATUS_NOTIFICATION = 1

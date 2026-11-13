@@ -30,6 +30,8 @@
 
     <application
         android:allowBackup="false"
+        android:icon="@drawable/ic_launcher_bridge"
+        android:roundIcon="@drawable/ic_launcher_bridge"
         android:label="Muse Bridge"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 

@@ -28,6 +28,8 @@ import org.intfar.mabridge.protocol.isValidSlug
  * the recent log, and the helper's one-time setup.
  */
 class MainActivity : Activity() {
+    private lateinit var familySwitch: Switch
+    private lateinit var allSwitch: Switch
 
     private lateinit var statusView: TextView
     private lateinit var logView: TextView
@@ -56,11 +58,15 @@ class MainActivity : Activity() {
             isChecked = prefs.getBoolean(key, false)
             setOnCheckedChangeListener { _, on ->
                 prefs.edit().putBoolean(key, on).apply()
+                // Keep the status notification's text and STOP buttons in step.
+                if (prefs.getBoolean("service_running", false)) {
+                    startService(Intent(this@MainActivity, BridgeService::class.java).setAction(BridgeService.ACTION_REFRESH_STATUS))
+                }
                 refresh()
             }
         }
-        root.addView(stopSwitch("stop_family", "Stop family commands"))
-        root.addView(stopSwitch("stop_all", "Stop all commands"))
+        familySwitch = stopSwitch("stop_family", "Stop family commands").also { root.addView(it) }
+        allSwitch = stopSwitch("stop_all", "Stop all commands").also { root.addView(it) }
 
         root.addView(label("Recent activity", 18f, bold = true))
         logView = label("", 12f)
@@ -183,6 +189,10 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // A STOP button on the notification may have changed a switch meanwhile.
+        val prefs = Config.prefs(this)
+        if (::familySwitch.isInitialized) familySwitch.isChecked = prefs.getBoolean("stop_family", false)
+        if (::allSwitch.isInitialized) allSwitch.isChecked = prefs.getBoolean("stop_all", false)
         refresh()
     }
 
