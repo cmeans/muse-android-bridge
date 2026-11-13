@@ -1,7 +1,7 @@
 # Tasker executor — build sheet (pilot: chris-razr)
 
 > Frozen research (2026-11-12): the native app replaces this executor. Where
-> this sheet differs from PROTOCOL.md v0.2 (check order, receipt wording),
+> this sheet differs from PROTOCOL.md v0.3 (check order, receipt wording, rate limits, launch checks),
 > PROTOCOL wins.
 
 > **Peggy constraint (Chris, 2026-11-11, after working the pilot setup

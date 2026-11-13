@@ -2,8 +2,11 @@
 
 **Version:** 0.3 (DRAFT, 2026-11-12). 0.3 adds the `cannot-launch`,
 `blocked` and `rate-limited` receipts (§6), per-channel rate limits
-(§3, §5), and a cap on `dropped-stale` receipts per connection (§6);
-Chris decided them on issues #7 and #8 on 2026-11-12. 0.2 records the packages verified on the
+(§3, §5), a cap on `dropped-stale` receipts for a replayed backlog
+(§6), and `launch-check` in `status report`; Chris decided the receipts,
+limits and cap on issues #7 and #8 on 2026-11-12, and the details
+(what counts toward a limit, `launch-check`) come from review the same
+day. 0.2 records the packages verified on the
 pilot phone (§4.3), fixes the receipt list (§6), and states that a channel
 disabled by STOP still marks a message as seen (§5); Chris approved those on
 2026-11-12. Five more came from review on the same day, and Chris
@@ -150,8 +153,9 @@ On receiving a message, an executor MUST:
    recorded as seen here, stale or not and before any later check, so a
    copy redelivered after a STOP is lifted, or after the phone's clock is
    corrected, cannot run, and a second copy gets no second receipt. A
-   stale message is logged and gets a `dropped-stale` receipt (§6); a
-   duplicate is logged only, since the first receipt stands.
+   stale message is logged and gets a `dropped-stale` receipt (§6; at
+   most 5 for a backlog replayed on reconnect); a duplicate is logged
+   only, since the first receipt stands.
 2. Match the body against the registry for that channel. No match → publish
    `err unknown-command` receipt, take no other action. Never attempt to
    interpret, complete, or "helpfully" parse a non-registry body.
@@ -182,26 +186,34 @@ err <command> not-implemented      bootstrap rustdesk / update rustdesk until Ph
 err <command> cannot-announce      the phone can't show the announcement (§5.4), so nothing was done
 err <command> failed               the action couldn't run (e.g. no sound to ring); not retried
 err <command> cannot-launch        launch only; "Display over other apps" is off, so Android would block it; nothing was done
-err <command> blocked              launch only; the app didn't come to the front within 5 s
+err <command> blocked              launch only; announced and sent, but the app wasn't seen in front within 5 s; it may still appear (don't resend at once)
 err <command> rate-limited         over the channel's limit (§3): 3 ring find or 10 launches per 10 minutes; nothing was done
 err unknown-command                never echoes the body
 dropped-stale <command>            stale and a registry command on its channel
 dropped-stale                      stale and not a registry command
-ok status report battery=<n> version=<app version> protocol=<version> owner=<on|off> family=<on|off>
+ok status report battery=<n> version=<app version> protocol=<version> owner=<on|off> family=<on|off> launch-check=<on|off>
 ```
 
 A duplicate gets no receipt, including a replayed copy of a message already
 handled that is now older than 120 s (its first receipt stands).
-`dropped-stale` receipts are also published when connectivity allows, at
-most 5 per connection: past that, a replayed backlog is logged only, so
-the receipt for a fresh command isn't queued behind it.
+`dropped-stale` receipts are also published when connectivity allows. A
+backlog replayed on reconnect gets at most 5; the rest are logged only,
+with a count, so the receipt for a fresh command isn't queued behind
+them. The cap ends with the first fresh message: later stale ones (a
+phone clock that's off, for instance) get their receipts again.
+
+The rate limits (§3) count only commands that acted (an app launched, a
+new ring started): a refused command, an app that isn't installed, or a
+`ring find` that joins a ring already going doesn't use up the budget.
 
 Receipts confirm what the *executor did*, not what the user did next
 (`ok launch meet` means Meet came to the foreground, not that anyone
 joined a call). The executor checks that through Android's usage events,
-which needs the owner to grant usage access; without it, `ok launch`
-means the launch was sent and not refused, and the executor's log says
-it was unverified.
+which needs the owner to grant usage access; an app already in front
+counts, and so does one opened behind the lock screen. Without usage
+access, `ok launch` means the launch was sent and not refused, the
+executor's log says it was unverified, and `status report` says
+`launch-check=off`.
 
 ## 7. On-phone controls (owner sovereignty)
 

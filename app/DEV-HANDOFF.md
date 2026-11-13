@@ -76,7 +76,7 @@ TTL, dedup and malformed input; what follows is still open):
 
 - prove reconnect/backoff over long runs (6 h and more), Doze, NordVPN,
   and 48-hour battery cost (locking the phone passed on 2026-11-12, for
-  launches and rings; whether a locked phone shows a launched app like
+  launches and rings, and again with the protocol 0.3 launch check; whether a locked phone shows a launched app like
   Meet usefully is device test B2);
 - a reproducible signing setup (the Gradle wrapper is generated and
   pinned).

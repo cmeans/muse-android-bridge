@@ -14,7 +14,6 @@ import android.media.RingtoneManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
-import android.app.AppOpsManager
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.os.SystemClock
@@ -29,6 +28,7 @@ import org.intfar.mabridge.protocol.Decision
 import org.intfar.mabridge.protocol.Gate
 import org.intfar.mabridge.protocol.PILOT_REGISTRY
 import org.intfar.mabridge.protocol.RateLimiter
+import org.intfar.mabridge.protocol.StaleReceipts
 import org.intfar.mabridge.protocol.Receipts
 import org.intfar.mabridge.protocol.StopState
 import org.intfar.mabridge.protocol.parseNtfyLine
@@ -49,8 +49,9 @@ import kotlin.concurrent.thread
  * topics; every line goes through parseNtfyLine and Gate.decide (every gate
  * decision: topic, TTL, dedup, registry, STOP), and this class carries out the
  * Decision: announce, launch or ring, post the receipt, append to the log. The
- * action-time receipts (not-installed, cannot-announce, failed) are decided
- * here and are covered by the device tests, not the JVM tests.
+ * action-time receipts (not-installed, cannot-announce, cannot-launch, blocked,
+ * failed, rate-limited) are decided here and are covered by the device tests;
+ * the rate limit and stale cap logic (RateLimiter, StaleReceipts) by JVM tests.
  */
 class BridgeService : Service(), TextToSpeech.OnInitListener {
 
@@ -63,8 +64,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     private var savedAlarmVolume: Int? = null
     private lateinit var gate: Gate
     private val limiter = RateLimiter()
-    // dropped-stale receipts sent on the current connection; past STALE_RECEIPT_CAP, logged only (§6).
-    @Volatile private var staleReceipts = 0
+    private val stale = StaleReceipts()
     private lateinit var acks: ExecutorService
     private val logLock = Any()
 
@@ -157,7 +157,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 } else {
                     Config.prefs(this).edit().putLong("last_connected", System.currentTimeMillis()).apply()
                     log("subscribed")
-                    staleReceipts = 0
+                    stale.connected().let { if (it > 0) log("stale backlog: $it dropped-stale receipts not sent") }
                     val openedAt = SystemClock.elapsedRealtime() // a duration: immune to clock changes
                     try {
                         c.inputStream.bufferedReader().use { reader ->
@@ -201,22 +201,19 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 log(d.log)
                 // A long outage can replay many cached messages: cap their receipts so the
                 // receipt for a fresh command isn't queued behind them all (§6).
-                when {
-                    staleReceipts < STALE_RECEIPT_CAP -> { staleReceipts++; ack(d.receipt) }
-                    staleReceipts == STALE_RECEIPT_CAP -> {
-                        staleReceipts++
-                        log("stale backlog: more than $STALE_RECEIPT_CAP on this connection; the rest are logged only")
-                    }
-                }
+                if (stale.shouldSend()) ack(d.receipt)
             }
-            is Decision.Reject -> { log(d.log); ack(d.receipt) }
+            is Decision.Reject -> { backlogOver(); log(d.log); ack(d.receipt) }
             is Decision.Run -> try {
-                if (!limiter.allow(d.channel, d.command, System.currentTimeMillis())) {
+                backlogOver()
+                // Monotonic: a wall-clock correction mustn't strand the limiter's times (§3).
+                val now = SystemClock.elapsedRealtime()
+                if (!limiter.allows(d.channel, d.command, now)) {
                     ack(Receipts.rateLimited(d.command))
                     log("rate-limited (${d.channel.name.lowercase()}): ${d.command.text}")
                     return
                 }
-                run(d.command, d.channel)
+                if (run(d.command, d.channel)) limiter.record(d.channel, d.command, now)
             } catch (e: Exception) {
                 // One failed action mustn't drop the subscription; it isn't retried (§5).
                 ack(Receipts.failed(d.command))
@@ -225,30 +222,42 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
-    /** Whether the owner gave the app usage access, which the launch check needs. */
-    private fun hasUsageAccess(): Boolean {
-        val ops = getSystemService(APP_OPS_SERVICE) as AppOpsManager
-        return ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName) ==
-            AppOpsManager.MODE_ALLOWED
+    /** A fresh message ends a replayed backlog; log how many stale receipts it left unsent. */
+    private fun backlogOver() {
+        stale.freshArrived().let { if (it > 0) log("stale backlog: $it dropped-stale receipts not sent") }
     }
 
+    /** Whether the owner gave the app usage access, which the launch check needs. */
+    private fun hasUsageAccess(): Boolean = Config.hasUsageAccess(this)
+
     /**
-     * Whether [pkg] came to the front within FOREGROUND_CHECK_MS of [sinceMs] (#7), from the
-     * usage events Android records; null when the app has no usage access, so it can't tell.
+     * Whether [pkg] is in front within FOREGROUND_CHECK_MS of [sinceMs] (#7): the most recent
+     * activity Android resumed, in the usage events it records, belongs to [pkg]. That also
+     * covers an app that was already in front, which a launch just brings forward without a
+     * new resume. Null when the app has no usage access, or the check itself failed, so it
+     * can't tell.
      */
     private fun reachedForeground(pkg: String, sinceMs: Long): Boolean? {
         if (!hasUsageAccess()) return null
         val usm = getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
         val deadline = SystemClock.elapsedRealtime() + FOREGROUND_CHECK_MS
-        while (true) {
-            val events = usm.queryEvents(sinceMs - 1_000, System.currentTimeMillis() + 1_000)
-            val e = UsageEvents.Event()
-            while (events.hasNextEvent()) {
-                events.getNextEvent(e)
-                if (e.packageName == pkg && e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) return true
+        try {
+            while (true) {
+                val events = usm.queryEvents(sinceMs - FOREGROUND_LOOKBACK_MS, System.currentTimeMillis() + 1_000)
+                val e = UsageEvents.Event()
+                var lastResumed: String? = null
+                while (events.hasNextEvent()) {
+                    events.getNextEvent(e)
+                    if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED) lastResumed = e.packageName
+                }
+                if (lastResumed == pkg) return true
+                if (SystemClock.elapsedRealtime() >= deadline) return false
+                Thread.sleep(250)
             }
-            if (SystemClock.elapsedRealtime() >= deadline) return false
-            Thread.sleep(250)
+        } catch (e: Exception) {
+            // The launch was sent; a failed check makes it unverified, not failed.
+            log("launch check failed: ${e.javaClass.simpleName}")
+            return null
         }
     }
 
@@ -260,7 +269,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         return nm.areNotificationsEnabled() && ch != null && ch.importance != NotificationManager.IMPORTANCE_NONE
     }
 
-    private fun run(command: Command, channel: Channel) {
+    /** Carries out a command; true if it acted on the phone (an app opened or a new ring), which the rate limit counts. */
+    private fun run(command: Command, channel: Channel): Boolean {
         val who = if (channel == Channel.OWNER) "the owner channel" else "family"
         val name = channel.name.lowercase()
         // Launch and ring announce first; without a visible banner they don't run (§1).
@@ -271,7 +281,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             if (!notInstalled) {
                 ack(Receipts.cannotAnnounce(command))
                 log("cannot-announce ($name): ${command.text}: notifications are off")
-                return
+                return false
             }
         }
         when (command) {
@@ -281,13 +291,13 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 if (intent == null) {
                     ack(Receipts.notInstalled(command))
                     log("not-installed ($name): ${command.text}")
-                    return
+                    return false
                 }
                 if (!Settings.canDrawOverlays(this)) {
                     // Android blocks activity starts from the background without it (#7).
                     ack(Receipts.cannotLaunch(command))
                     log("cannot-launch ($name): ${command.text}: 'Display over other apps' is off")
-                    return
+                    return false
                 }
                 announce("Opening ${app.displayName}: asked by $who")
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -307,27 +317,32 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                         log("ok ($name): ${command.text} (unverified: no usage access)")
                     }
                 }
+                return true
             }
             Command.RingFind -> {
                 announce("Ringing so you can find the phone: asked by $who")
+                val joining = ringtone != null
                 if (startRing(channel)) {
                     ack(Receipts.ok(command))
                     log("ok ($name): ${command.text}")
-                } else {
-                    ack(Receipts.failed(command))
-                    log("failed ($name): ${command.text}: no sound played")
+                    return !joining
                 }
+                ack(Receipts.failed(command))
+                log("failed ($name): ${command.text}: no sound played")
+                return false
             }
             Command.StatusReport -> {
                 val bm = getSystemService(BATTERY_SERVICE) as BatteryManager
                 val battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
-                ack(Receipts.status(battery, version, PROTOCOL_VERSION, stopState()))
+                ack(Receipts.status(battery, version, PROTOCOL_VERSION, stopState(), launchCheck = hasUsageAccess()))
                 log("ok ($name): ${command.text}")
+                return false
             }
             Command.BootstrapRustdesk, Command.UpdateRustdesk -> {
                 ack(Receipts.notImplemented(command))
                 log("not-implemented ($name): ${command.text}")
+                return false
             }
         }
     }
@@ -533,8 +548,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         private const val RING_MS = 30_000L
         /** How long a launched app has to come to the front before the launch counts as blocked. */
         private const val FOREGROUND_CHECK_MS = 5_000L
-        /** dropped-stale receipts per connection; the rest of a backlog is logged only. */
-        private const val STALE_RECEIPT_CAP = 5
+        /** How far back the launch check reads usage events, to see an app that was already in front. */
+        private const val FOREGROUND_LOOKBACK_MS = 30 * 60_000L
         /** How long a ring may take to start playing before it counts as failed. */
         private const val PLAY_CHECK_MS = 1_000L
         private const val PREF_LAST_ID = "last_message_id"
