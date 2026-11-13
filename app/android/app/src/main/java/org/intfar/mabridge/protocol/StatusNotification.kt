@@ -20,6 +20,25 @@ enum class StopButton(val label: String, val action: String, val prefKey: String
     }
 }
 
+/**
+ * What tapping a STOP button does, given the STOP state before the tap: turn on
+ * [StopButton.prefKey], end a ring for Stop all, and log [logLine]. A tap on a switch that's
+ * already on (a stale notification) changes nothing and the log says so.
+ */
+data class StopTap(val button: StopButton, val stopsRinging: Boolean, val logLine: String)
+
+/** The tap a service action stands for, or null when the action isn't a STOP button. */
+fun stopTapFor(action: String?, before: StopState): StopTap? {
+    val button = StopButton.forAction(action) ?: return null
+    val alreadyOn = when (button) {
+        StopButton.FAMILY -> before.family
+        StopButton.ALL -> before.all
+    }
+    val logLine = if (alreadyOn) "${button.switchName} tapped on the notification; it was already on"
+    else "${button.switchName} switched on from the notification"
+    return StopTap(button, stopsRinging = button == StopButton.ALL, logLine = logLine)
+}
+
 /** What the status notification says and which STOP buttons it offers. */
 data class StatusNotification(val text: String, val buttons: List<StopButton>)
 
@@ -31,5 +50,5 @@ data class StatusNotification(val text: String, val buttons: List<StopButton>)
 fun statusNotificationFor(stop: StopState): StatusNotification = when {
     stop.all -> StatusNotification("All commands stopped. Tap to open.", emptyList())
     stop.family -> StatusNotification("Listening for owner commands; family stopped. Tap to open.", listOf(StopButton.ALL))
-    else -> StatusNotification("Listening for commands. Tap to open.", listOf(StopButton.FAMILY, StopButton.ALL))
+    else -> StatusNotification("Listening for owner and family commands. Tap to open.", listOf(StopButton.FAMILY, StopButton.ALL))
 }

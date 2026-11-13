@@ -6,7 +6,7 @@ import org.junit.Test
 class StatusNotificationTest {
     @Test fun nothingStopped() {
         val s = statusNotificationFor(StopState(all = false, family = false))
-        assertEquals("Listening for commands. Tap to open.", s.text)
+        assertEquals("Listening for owner and family commands. Tap to open.", s.text)
         assertEquals(listOf(StopButton.FAMILY, StopButton.ALL), s.buttons)
     }
 
@@ -45,5 +45,46 @@ class StatusNotificationTest {
             assertEquals("All commands stopped. Tap to open.", s.text)
             assertEquals(emptyList<StopButton>(), s.buttons)
         }
+    }
+
+    @Test fun stopFamilyTapTurnsOnFamilyAndLeavesTheRing() {
+        val t = stopTapFor(StopButton.FAMILY.action, StopState(all = false, family = false))!!
+        assertEquals(StopButton.FAMILY, t.button)
+        assertEquals(false, t.stopsRinging)
+        assertEquals("STOP family switched on from the notification", t.logLine)
+    }
+
+    @Test fun stopAllTapTurnsOnAllAndEndsTheRing() {
+        val t = stopTapFor(StopButton.ALL.action, StopState(all = false, family = true))!!
+        assertEquals(StopButton.ALL, t.button)
+        assertEquals(true, t.stopsRinging)
+        assertEquals("STOP all switched on from the notification", t.logLine)
+    }
+
+    @Test fun aTapOnASwitchAlreadyOnSaysSo() {
+        assertEquals(
+            "STOP family tapped on the notification; it was already on",
+            stopTapFor(StopButton.FAMILY.action, StopState(all = false, family = true))!!.logLine,
+        )
+        assertEquals(
+            "STOP all tapped on the notification; it was already on",
+            stopTapFor(StopButton.ALL.action, StopState(all = true, family = false))!!.logLine,
+        )
+        // Each button reads only its own switch.
+        assertEquals(
+            "STOP family switched on from the notification",
+            stopTapFor(StopButton.FAMILY.action, StopState(all = true, family = false))!!.logLine,
+        )
+        assertEquals(
+            "STOP all switched on from the notification",
+            stopTapFor(StopButton.ALL.action, StopState(all = false, family = true))!!.logLine,
+        )
+    }
+
+    @Test fun otherActionsAreNotTaps() {
+        val none = StopState(all = false, family = false)
+        assertEquals(null, stopTapFor(null, none))
+        assertEquals(null, stopTapFor("org.intfar.mabridge.STOP_RING", none))
+        assertEquals(null, stopTapFor("org.intfar.mabridge.REPOST_STATUS", none))
     }
 }

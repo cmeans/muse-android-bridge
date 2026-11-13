@@ -34,6 +34,7 @@ import org.intfar.mabridge.protocol.STOP_PREF_KEYS
 import org.intfar.mabridge.protocol.StopButton
 import org.intfar.mabridge.protocol.StopState
 import org.intfar.mabridge.protocol.statusNotificationFor
+import org.intfar.mabridge.protocol.stopTapFor
 import org.intfar.mabridge.protocol.parseNtfyLine
 import org.intfar.mabridge.protocol.parseNtfyOpenTime
 import org.json.JSONObject
@@ -104,16 +105,16 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // The STOP buttons on the status notification: local and owner-only, like the
         // switches on the owner screen (PROTOCOL §7). Turning them off again is done there.
-        val button = StopButton.forAction(intent?.action)
-        if (button != null) {
-            Config.prefs(this).edit().putBoolean(button.prefKey, true).apply()
-            log("${button.switchName} switched on from the notification")
-            if (button == StopButton.ALL) stopRinging(button.switchName)
+        val tap = stopTapFor(intent?.action, stopState())
+        if (tap != null) {
+            Config.prefs(this).edit().putBoolean(tap.button.prefKey, true).apply()
+            log(tap.logLine)
+            if (tap.stopsRinging) stopRinging(tap.button.switchName)
         }
         startForegroundWithStatus()
         // Since Android 14 the owner can swipe the status notification away; it comes straight
         // back, so the STOP buttons stay one tap away.
-        if (button != null || intent?.action == ACTION_REPOST_STATUS) {
+        if (tap != null || intent?.action == ACTION_REPOST_STATUS) {
             if (!running) stopSelf()
             return START_STICKY
         }
@@ -496,6 +497,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 .setContentText("Tap Stop ringing to silence it")
                 .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
                 .addAction(Notification.Action.Builder(null, "Stop ringing", stopIntent).build())
+                .setContentIntent(ownerScreen())
+                // Stop ringing must work from the lock screen, whatever it hides.
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setOngoing(true)
                 .build(),
         )
