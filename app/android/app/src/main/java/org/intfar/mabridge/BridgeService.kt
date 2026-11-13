@@ -107,8 +107,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         // switches on the owner screen (PROTOCOL §7). Turning them off again is done there.
         val tap = stopTapFor(intent?.action, stopState())
         if (tap != null) {
-            Config.prefs(this).edit().putBoolean(tap.button.prefKey, true).apply()
+            // Logged first: the owner screen re-reads the log when the switch changes.
             log(tap.logLine)
+            Config.prefs(this).edit().putBoolean(tap.button.prefKey, true).apply()
             if (tap.stopsRinging) stopRinging(tap.button.switchName)
         }
         startForegroundWithStatus()
@@ -600,8 +601,18 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
      */
     private fun startForegroundWithStatus() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        // Default importance, with no sound or vibration: lock screens hide silent (low)
+        // notifications by default, and the STOP buttons must show there. A channel's
+        // importance can't be raised once created, so this is a new channel, and the old
+        // silent one is deleted.
+        nm.deleteNotificationChannel(CH_STATUS_OLD)
         nm.createNotificationChannel(
-            NotificationChannel(CH_STATUS, "Bridge status", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CH_STATUS, "Bridge status", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
         )
         val status = statusNotificationFor(stopState())
         val b = Notification.Builder(this, CH_STATUS)
@@ -614,6 +625,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             // when the phone hides sensitive notification content there.
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOngoing(true)
+            // Re-posted on every STOP change; only the first post may alert.
+            .setOnlyAlertOnce(true)
         for (button in status.buttons) {
             // Request codes 2 and 3: distinct from Stop ringing (1) and the repost (4).
             val pending = serviceAction(button.action, 2 + button.ordinal)
@@ -632,7 +645,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         const val LOG_FILE = "bridge.log"
         private const val ACTION_STOP_RING = "org.intfar.mabridge.STOP_RING"
         private const val ACTION_REPOST_STATUS = "org.intfar.mabridge.REPOST_STATUS"
-        private const val CH_STATUS = "mab_status"
+        private const val CH_STATUS = "mab_status_v2"
+        /** The silent status channel before 0.2.1, which lock screens hide by default. */
+        private const val CH_STATUS_OLD = "mab_status"
         private const val CH_ANNOUNCE = "mab_announce"
         private const val STATUS_NOTIFICATION = 1
         private const val RING_NOTIFICATION = 2
