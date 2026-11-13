@@ -1,11 +1,11 @@
 # ntfy provisioning — pilot device `pilot-phone`
 
 > A record of the reference deployment's provisioning, written as a worked
-> example. Device names, users and credential variable names are generic
-> examples (the live server uses its own); hosts and paths are that
-> deployment's. Substitute your own throughout.
+> example. Device names, users, hosts and credential variable names are
+> generic examples (the live server uses its own); file paths are the
+> reference deployment's. Substitute your own throughout.
 
-Server: the server operator's existing ntfy on CT 104 (Holodeck).
+Server: the server operator's existing ntfy, in a container on their home server.
 Provisioned 2026-11-11 with the maintainer's go. No service restart was
 needed or performed — user/ACL changes are live database operations.
 
@@ -17,7 +17,7 @@ needed or performed — user/ACL changes are live database operations.
 | `muse` (the server operator's Muse, existing token) | write-only | — | read-only |
 | `admin` (admin) | full (admin role) | full | full |
 
-Credential values live only in CT 104 `/root/ntfy-creds.txt` (0600) as
+Credential values live only in the ntfy container's `/root/ntfy-creds.txt` (0600) as
 `PILOT_PHONE_USER` / `PILOT_PHONE_PASSWORD`. Muse's token is unchanged at
 `~/.config/ntfy/token` (0600) — the ACL extension applies to the existing
 token because grants attach to the user.
@@ -41,7 +41,7 @@ token because grants attach to the user.
   phases.
 - The phone-side subscription: on the pilot phone, the ntfy app (or the
   executor) subscribes with the `pilot-phone-phone` user against
-  https://ntfy.intfar.com — password handed over at setup time, never
+  https://ntfy.example.com — password handed over at setup time, never
   written here.
 
 ## F1 revocation drill (2026-11-11, PASSED)
@@ -66,7 +66,7 @@ Phase 4 provisioning.
 ## F2 phone-credential scope (2026-11-11, PASSED via the public path)
 
 Re-ran the phone credential's scope checks through the public front door
-(https://ntfy.intfar.com via the CT 105 proxy — the exact path the phone
+(https://ntfy.example.com via the server's reverse proxy — the exact path the phone
 will use), not just localhost: read owner topic → message received;
 publish to owner → 403; publish ack receipt → 200; read ack → 403.
 Combined with provisioning-day localhost checks (alert topic → 403) and

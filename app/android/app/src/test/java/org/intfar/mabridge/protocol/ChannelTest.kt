@@ -8,7 +8,7 @@ import org.junit.Test
 /** PROTOCOL §2.1: a device slug is short, lowercase, and uses hyphens only. */
 class ChannelTest {
     @Test fun acceptsProtocolExamples() {
-        for (s in listOf("alex-pixel", "owner-phone", "test-moto", "a1")) {
+        for (s in listOf("alex-pixel", "owner-phone", "spare-phone", "a1")) {
             assertTrue(s, isValidSlug(s))
         }
     }
