@@ -117,7 +117,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         }
         startForegroundWithStatus()
         // Since Android 14 the owner can swipe the status notification away; it comes straight
-        // back, so the STOP buttons stay one tap away.
+        // back, so the STOP buttons stay on the notification.
         if (tap != null || intent?.action == ACTION_REPOST_STATUS) {
             if (!running) stopSelf()
             return START_STICKY
