@@ -30,6 +30,7 @@ import org.intfar.mabridge.protocol.PILOT_REGISTRY
 import org.intfar.mabridge.protocol.RateLimiter
 import org.intfar.mabridge.protocol.StaleReceipts
 import org.intfar.mabridge.protocol.Receipts
+import org.intfar.mabridge.protocol.STOP_PREF_KEYS
 import org.intfar.mabridge.protocol.StopButton
 import org.intfar.mabridge.protocol.StopState
 import org.intfar.mabridge.protocol.statusNotificationFor
@@ -77,7 +78,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     // or the notification itself, so the notification always matches. A field: preferences
     // hold their listeners weakly.
     private val stopListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "stop_all" || key == "stop_family") startForegroundWithStatus()
+        if (key in STOP_PREF_KEYS) startForegroundWithStatus()
     }
 
     override fun onCreate() {
@@ -103,19 +104,16 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // The STOP buttons on the status notification: local and owner-only, like the
         // switches on the owner screen (PROTOCOL §7). Turning them off again is done there.
-        when (intent?.action) {
-            ACTION_STOP_ALL -> {
-                Config.prefs(this).edit().putBoolean("stop_all", true).apply()
-                log("STOP all switched on from the notification")
-                stopRinging("STOP all")
-            }
-            ACTION_STOP_FAMILY -> {
-                Config.prefs(this).edit().putBoolean("stop_family", true).apply()
-                log("STOP family switched on from the notification")
-            }
+        val button = StopButton.forAction(intent?.action)
+        if (button != null) {
+            Config.prefs(this).edit().putBoolean(button.prefKey, true).apply()
+            log("${button.switchName} switched on from the notification")
+            if (button == StopButton.ALL) stopRinging(button.switchName)
         }
         startForegroundWithStatus()
-        if (intent?.action == ACTION_STOP_ALL || intent?.action == ACTION_STOP_FAMILY) {
+        // Since Android 14 the owner can swipe the status notification away; it comes straight
+        // back, so the STOP buttons stay one tap away.
+        if (button != null || intent?.action == ACTION_REPOST_STATUS) {
             if (!running) stopSelf()
             return START_STICKY
         }
@@ -607,13 +605,15 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             .setContentText(status.text)
             .setSmallIcon(R.drawable.ic_bridge)
             .setContentIntent(ownerScreen())
+            .setDeleteIntent(serviceAction(ACTION_REPOST_STATUS, 4))
+            // Nothing private in it, and the STOP buttons must show on the lock screen even
+            // when the phone hides sensitive notification content there.
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setOngoing(true)
         for (button in status.buttons) {
-            val action = when (button) {
-                StopButton.FAMILY -> Notification.Action.Builder(null, "Stop family", serviceAction(ACTION_STOP_FAMILY, 2))
-                StopButton.ALL -> Notification.Action.Builder(null, "Stop all", serviceAction(ACTION_STOP_ALL, 3))
-            }
-            b.addAction(action.build())
+            // Request codes 2 and 3: distinct from Stop ringing (1) and the repost (4).
+            val pending = serviceAction(button.action, 2 + button.ordinal)
+            b.addAction(Notification.Action.Builder(null, button.label, pending).build())
         }
         val n = b.build()
         if (Build.VERSION.SDK_INT >= 34) {
@@ -627,8 +627,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         const val PROTOCOL_VERSION = "0.3"
         const val LOG_FILE = "bridge.log"
         private const val ACTION_STOP_RING = "org.intfar.mabridge.STOP_RING"
-        private const val ACTION_STOP_ALL = "org.intfar.mabridge.STOP_ALL"
-        private const val ACTION_STOP_FAMILY = "org.intfar.mabridge.STOP_FAMILY"
+        private const val ACTION_REPOST_STATUS = "org.intfar.mabridge.REPOST_STATUS"
         private const val CH_STATUS = "mab_status"
         private const val CH_ANNOUNCE = "mab_announce"
         private const val STATUS_NOTIFICATION = 1

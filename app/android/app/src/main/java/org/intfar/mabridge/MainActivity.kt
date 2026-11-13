@@ -20,6 +20,9 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.intfar.mabridge.protocol.PREF_STOP_ALL
+import org.intfar.mabridge.protocol.PREF_STOP_FAMILY
+import org.intfar.mabridge.protocol.STOP_PREF_KEYS
 import org.intfar.mabridge.protocol.isValidServer
 import org.intfar.mabridge.protocol.isValidSlug
 
@@ -62,8 +65,8 @@ class MainActivity : Activity() {
                 refresh()
             }
         }
-        familySwitch = stopSwitch("stop_family", "Stop family commands").also { root.addView(it) }
-        allSwitch = stopSwitch("stop_all", "Stop all commands").also { root.addView(it) }
+        familySwitch = stopSwitch(PREF_STOP_FAMILY, "Stop family commands").also { root.addView(it) }
+        allSwitch = stopSwitch(PREF_STOP_ALL, "Stop all commands").also { root.addView(it) }
 
         root.addView(label("Recent activity", 18f, bold = true))
         logView = label("", 12f)
@@ -187,17 +190,17 @@ class MainActivity : Activity() {
     // A STOP button on the notification can change a switch while this screen is showing
     // (the shade over it doesn't pause it), so follow the preferences, not just onResume.
     private val stopListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-        if (key == "stop_all" || key == "stop_family") syncSwitches()
+        if (key in STOP_PREF_KEYS) syncSwitches()
     }
 
     private fun syncSwitches() {
         val prefs = Config.prefs(this)
         // Unchanged values are skipped, so setting them doesn't fire the change listeners again.
-        if (::familySwitch.isInitialized && familySwitch.isChecked != prefs.getBoolean("stop_family", false)) {
-            familySwitch.isChecked = prefs.getBoolean("stop_family", false)
+        if (::familySwitch.isInitialized && familySwitch.isChecked != prefs.getBoolean(PREF_STOP_FAMILY, false)) {
+            familySwitch.isChecked = prefs.getBoolean(PREF_STOP_FAMILY, false)
         }
-        if (::allSwitch.isInitialized && allSwitch.isChecked != prefs.getBoolean("stop_all", false)) {
-            allSwitch.isChecked = prefs.getBoolean("stop_all", false)
+        if (::allSwitch.isInitialized && allSwitch.isChecked != prefs.getBoolean(PREF_STOP_ALL, false)) {
+            allSwitch.isChecked = prefs.getBoolean(PREF_STOP_ALL, false)
         }
         refresh()
     }

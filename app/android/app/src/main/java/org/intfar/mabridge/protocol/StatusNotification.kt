@@ -1,7 +1,24 @@
 package org.intfar.mabridge.protocol
 
-/** A one-tap STOP button on the bridge's status notification. */
-enum class StopButton { FAMILY, ALL }
+/** The preference keys of the two STOP switches; a change to either re-posts the status notification. */
+const val PREF_STOP_ALL = "stop_all"
+const val PREF_STOP_FAMILY = "stop_family"
+val STOP_PREF_KEYS = setOf(PREF_STOP_ALL, PREF_STOP_FAMILY)
+
+/**
+ * A one-tap STOP button on the bridge's status notification: its label, the service action it
+ * sends, and the STOP switch that action turns on. Kept together so a button can't be wired to
+ * the other switch. [switchName] is how the log names the switch.
+ */
+enum class StopButton(val label: String, val action: String, val prefKey: String, val switchName: String) {
+    FAMILY("Stop family", "org.intfar.mabridge.STOP_FAMILY", PREF_STOP_FAMILY, "STOP family"),
+    ALL("Stop all", "org.intfar.mabridge.STOP_ALL", PREF_STOP_ALL, "STOP all");
+
+    companion object {
+        /** The button a service action came from, or null for any other action. */
+        fun forAction(action: String?): StopButton? = entries.firstOrNull { it.action == action }
+    }
+}
 
 /** What the status notification says and which STOP buttons it offers. */
 data class StatusNotification(val text: String, val buttons: List<StopButton>)
