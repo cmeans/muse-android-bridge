@@ -52,7 +52,7 @@ phone (test group A1 confirmed live).
 Rationale: the Tasker setup experience — imports, project management,
 per-version XML dialects — is helper-tolerable but wrong-shaped for a
 frozen, never-touched family deployment; the app (store/sideload
-install, self-updating, one purpose) is the right owner surface.
+install, self-updating, one purpose) is the right surface for the owner.
 Tasker work freezes as validated research: PROTOCOL.md is
 executor-agnostic, so every finding (topics, ACLs, TTL/dedup,
 cached-replay behavior, registry, STOP semantics) carries over

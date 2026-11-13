@@ -40,7 +40,7 @@ touched until every Phase 1–3 item that bears on it has a recorded result.
 | C5 | Whitelist semantics | Two controller IDs whitelisted; connect from both; remove one; retry | Both work; removed ID refused before password prompt; re-adding restores |
 | C6 | IP-change breakage (accepted risk — no DDNS) | Change the configured server address to a wrong IP; observe failure mode; restore | Failure is obvious and diagnosable; recovery procedure written down |
 
-## D. Controller (per-operator stack) — Phase 1 (operator-side), Phase 4 (owner-side)
+## D. Controller (per-operator stack) — Phase 1 (server operator), Phase 4 (owner)
 
 | # | Unknown | Test | Pass looks like |
 |---|---|---|---|

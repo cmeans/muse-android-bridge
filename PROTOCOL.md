@@ -3,12 +3,12 @@
 **Version:** 0.3 (DRAFT, 2026-11-12). 0.3 adds the `cannot-launch`,
 `blocked` and `rate-limited` receipts (§6), per-channel rate limits
 (§3, §5), a cap on `dropped-stale` receipts for a replayed backlog
-(§6), and `launch-check` in `status report`; Chris decided the receipts,
-limits and cap on issues #7 and #8 on 2026-11-12, and the details
-(what counts toward a limit, `launch-check`) come from review the same
-day. 0.2 records the packages verified on the
-pilot phone (§4.3), fixes the receipt list (§6), and states that a channel
-disabled by STOP still marks a message as seen (§5); the maintainer approved
+(§6), and `launch-check` in `status report`; the maintainer decided the
+receipts, limits and cap on issues #7 and #8 on 2026-11-12, and the
+details (what counts toward a limit, `launch-check`) come from review
+the same day. 0.2 records the packages verified on the pilot phone
+(§4.3), fixes the receipt list (§6), and states that a channel disabled
+by STOP still marks a message as seen (§5); the maintainer approved
 those on 2026-11-12. Five more came from review on the same day, and the
 maintainer approved them on the PR later that day: the `cannot-announce` and
 `failed` receipts (§6), the cache catch-up note (§2.3), every message on
@@ -47,7 +47,7 @@ existing instance; `auth-default-access: deny-all`).
 | `mab-<device>-family` | family → phone | Family channel: launch-only subset (§4.2) |
 | `mab-<device>-ack` | phone → publishers | Execution receipts (§6) |
 
-`<device>` is a short lowercase slug chosen at provisioning (`owner-phone`,
+`<device>` is a short lowercase slug chosen at provisioning (`pilot-phone`,
 `helper-pixel`, `alex-phone`, …). Topic names use hyphens only.
 
 ### 2.2 Message format
@@ -56,7 +56,7 @@ Publish with ntfy's JSON API. The **message body is exactly one command** from
 the registry — lowercase, one verb, one argument, single space:
 
 ```
-{"topic": "mab-owner-phone-family", "message": "launch meet"}
+{"topic": "mab-pilot-phone-family", "message": "launch meet"}
 ```
 
 No free text is ever valid. A body that does not match a registry entry

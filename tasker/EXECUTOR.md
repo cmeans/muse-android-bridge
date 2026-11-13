@@ -1,12 +1,12 @@
-# Tasker executor — build sheet (pilot: owner-phone)
+# Tasker executor — build sheet (pilot: pilot-phone)
 
 > Frozen research (2026-11-12): the native app replaces this executor. Where
 > this sheet differs from PROTOCOL.md v0.3 (check order, receipt wording,
 > rate limits, launch checks), PROTOCOL wins.
 
 > **Owner constraint (maintainer, 2026-11-11, after working the pilot
-> setup):** this is too much for the phone's owner. Correct — and by
-> design the owner never sees any of it. Everything in this sheet is
+> setup themselves):** "This is too much for the phone's owner."
+> Correct — and by design the owner never sees any of it. Everything in this sheet is
 > helper-side work, done by a family helper, ideally in one in-person
 > setup visit. The owner's entire surface is: open Muse, ask for help,
 > tap Start service / Start now when their Muse asks, and the STOP
@@ -22,13 +22,17 @@ Build interactively on the phone (Tasker's UI generates valid project XML;
 hand-written XML is import-fragile). This sheet is the exact logic to enter,
 from PROTOCOL.md. Export the finished project to `tasker/` in this repo.
 
+The exported `tasker/*.xml` files are the reference deployment's: they name
+its own server and device slug, not `mab-pilot-phone-*`. Edit both before
+importing them anywhere else.
+
 ## On-phone prerequisites (session checklist)
 
-1. Tasker installed from Play, bought on the helper's account (Family Library
+1. Tasker installed from Play, bought on a family helper's account (Family Library
    source for later phases).
-2. ntfy app: subscribe to `mab-owner-phone-owner` and `mab-owner-phone-family`
+2. ntfy app: subscribe to `mab-pilot-phone-owner` and `mab-pilot-phone-family`
    (pilot may ride the existing admin sign-in; the dedicated
-   `owner-phone-phone` credential is for family devices — its scope is
+   `pilot-phone-phone` credential is for family devices — its scope is
    already verified server-side, test F2). **Mute both topics** so commands
    don't pile up as notifications; the broadcast intent still fires.
 3. Battery: exempt Tasker and the ntfy app from battery optimization

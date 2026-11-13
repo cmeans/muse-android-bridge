@@ -29,7 +29,7 @@ the separate Phase 3 design is approved.
 ## What is already proven
 
 - The ntfy server, topics, users, and ACL separation are live for the
-  `owner-phone` pilot and were verified end to end.
+  `pilot-phone` pilot and were verified end to end.
 - Security drills F1 (publisher revocation) and F2 (phone credential
   scope) passed.
 - The Tasker probe received real commands on both channels and resolved

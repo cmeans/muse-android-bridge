@@ -1,4 +1,9 @@
-# ntfy provisioning — pilot device `owner-phone`
+# ntfy provisioning — pilot device `pilot-phone`
+
+> A record of the reference deployment's provisioning, written as a worked
+> example. Device names, users and credential variable names are generic
+> examples (the live server uses its own); hosts and paths are that
+> deployment's. Substitute your own throughout.
 
 Server: the server operator's existing ntfy on CT 104 (Holodeck).
 Provisioned 2026-11-11 with the maintainer's go. No service restart was
@@ -6,14 +11,14 @@ needed or performed — user/ACL changes are live database operations.
 
 ## Principals and grants (per PROTOCOL.md §3)
 
-| Principal | mab-owner-phone-owner | mab-owner-phone-family | mab-owner-phone-ack |
+| Principal | mab-pilot-phone-owner | mab-pilot-phone-family | mab-pilot-phone-ack |
 |---|---|---|---|
-| `owner-phone-phone` (user, on-phone credential) | read-only | read-only | write-only |
+| `pilot-phone-phone` (user, on-phone credential) | read-only | read-only | write-only |
 | `muse` (the server operator's Muse, existing token) | write-only | — | read-only |
 | `admin` (admin) | full (admin role) | full | full |
 
 Credential values live only in CT 104 `/root/ntfy-creds.txt` (0600) as
-`OWNER_PHONE_USER` / `OWNER_PHONE_PASSWORD`. Muse's token is unchanged at
+`PILOT_PHONE_USER` / `PILOT_PHONE_PASSWORD`. Muse's token is unchanged at
 `~/.config/ntfy/token` (0600) — the ACL extension applies to the existing
 token because grants attach to the user.
 
@@ -35,17 +40,17 @@ token because grants attach to the user.
 - `mab-helper-pixel-*` and `mab-alex-phone-*` topic families at their
   phases.
 - The phone-side subscription: on the pilot phone, the ntfy app (or the
-  executor) subscribes with the `owner-phone-phone` user against
+  executor) subscribes with the `pilot-phone-phone` user against
   https://ntfy.intfar.com — password handed over at setup time, never
   written here.
 
 ## F1 revocation drill (2026-11-11, PASSED)
 
-Throwaway publisher `drill-pub` (write-only on `mab-owner-phone-family`,
+Throwaway publisher `drill-pub` (write-only on `mab-pilot-phone-family`,
 own token), run entirely against the pilot topics:
 
 1. Publish with drill token → **200**.
-2. `ntfy access drill-pub mab-owner-phone-family deny` (the revocation move).
+2. `ntfy access drill-pub mab-pilot-phone-family deny` (the revocation move).
 3. Publish again with the **same, still-valid token** → **403**. ACL denial
    is immediate and beats token validity — revoking a family member does
    not require chasing their token.

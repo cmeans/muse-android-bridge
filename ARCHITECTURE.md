@@ -5,9 +5,9 @@
 
 ## 1. End goal (stated by the maintainer, 2026-11-11)
 
-> Someone launches **their own Muse** on their
-> phone (Android, at the moment) and asks it to **fix a thing on the phone** —
-> and their Muse fixes it.
+> Someone launches **their own Muse** on their phone (Android, at the
+> moment) and asks it to **fix a thing on the phone** — and their Muse
+> fixes it.
 
 Everything in this design exists to serve that sentence. The same
 deployment must work for any Muse user with an Android phone.
@@ -19,6 +19,9 @@ deployment must work for any Muse user with an Android phone.
 | **Phone owner** | Owns the phone, the Muse account, and every permission. Asks for help in their own words, performs the few taps Android reserves for a human finger, can stop everything from the phone. |
 | **Owner's Muse** | The operator. Hears the request, diagnoses first with the paired-phone data it already has (notifications, battery, network, texts), and only escalates to bridge commands and screen control when diagnosis says they're needed. |
 | **Family publishers** (family helpers) | Holders of the family channel: launch-only bridge commands for when they're already helping. One of them, the server operator, additionally runs the shared family infrastructure and their own controller for the test phases and for helping directly. |
+
+In the reference deployment, the maintainer (who approves design and
+rollout decisions) is also the server operator.
 
 ## 3. Components, by location
 
@@ -49,7 +52,7 @@ controller stack in **their own environment**:
 
 | Operator | Controller placement |
 |---|---|
-| The server operator's Muse (test phases; the operator helping the owner directly) | 1 LXC on Holodeck, tailnet-only, no public ports. |
+| The server operator's Muse (test phases; the server operator helping the owner directly) | 1 LXC on Holodeck, tailnet-only, no public ports. |
 | The owner's Muse (the end-goal deployment) | Inside the owner's Muse's own computer/VM — no access to the server operator's network required. |
 
 The RustDesk server is shared family infrastructure; controllers are
@@ -62,8 +65,8 @@ own operator and treated as a sensitive credential store.
 single family controller on Holodeck, driven remotely by the owner's Muse
 as well as the server operator's, is possible but is NOT the base design,
 because it would require exposing the controller's shim beyond the
-operator's tailnet and would concentrate every phone's access credentials
-in one box on the operator's network. If the per-operator setup inside the
+server operator's tailnet and would concentrate every phone's access credentials
+in one box on the server operator's network. If the per-operator setup inside the
 owner's Muse's own environment proves impractical, the hosted variant may
 be adopted with exactly one exposure mechanism: a Tailscale node share of
 that single container to the owner's Muse's environment (identity-based,
@@ -71,7 +74,8 @@ scoped to that one machine, revocable).
 The shim must never be published on a public port, with or without a token.
 Note the asymmetry: the owner's Muse reaching the RustDesk *server* needs
 no exposure decision at all — the server is public-facing by design and
-its controller, wherever it lives, connects to it as an ordinary client.
+the owner's Muse's controller, wherever it lives, connects to it as an
+ordinary client.
 
 ## 3.4 The two paths (summary, confirmed with the maintainer 2026-11-11)
 
@@ -84,7 +88,7 @@ only in **who operates** and **which controller** connects:
 | Operator | A family helper (personally, or the server operator's Muse) | The owner, via their own Muse |
 | Bridge channel used | Family (launch-only) | Owner (full menu) |
 | Controller | The server operator's Holodeck LXC (for the operator's Muse) or the helper's own laptop (human driving) | The owner's Muse's own environment |
-| Works from | Anywhere with internet — the server and the operator's controller live at the operator's home and are always on; the *helpers* do not need to be home | Anywhere the owner is |
+| Works from | Anywhere with internet — the server and the server operator's controller live at the server operator's home and are always on; the *helpers* do not need to be home | Anywhere the owner is |
 | Phone-side requirement | The owner starts the RustDesk service when asked | The owner starts the RustDesk service when their Muse asks |
 
 For both paths to exist, the owner's phone whitelists **both** controller
@@ -147,7 +151,7 @@ bootstrap (human completes protected prompts).
 ## 6. Rollout (decided 2026-11-11)
 
 1. **Phase 0** — protocol spec (`PROTOCOL.md`, done as draft).
-2. **Phase 1** — Tasker executor pilot + operator-side controller, both
+2. **Phase 1** — Tasker executor pilot + server-operator-side controller, both
    against the pilot phone (a Razr+ 2023, Android 16) as host. Graded:
    trigger latency/battery, controller frame readability, click accuracy,
    headless stability, VPN interference.

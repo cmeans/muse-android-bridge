@@ -77,7 +77,7 @@ device rather than the server itself.
   opened the ntfy subscribe screens via `ntfy://` deep links, and both
   bridge topics were subscribed with two taps total, zero typing.
 - **Receive path CONFIRMED live**: messages published to both
-  `mab-owner-phone-owner` (`launch meet`) and `mab-owner-phone-family`
+  `mab-pilot-phone-owner` (`launch meet`) and `mab-pilot-phone-family`
   (`launch whatsapp`) produced the probe Flash with `%topic` and
   `%message` correctly resolved. Cached messages were also delivered on
   subscribe (owner topic showed all 3 earlier tests) — the TTL/dedup
