@@ -154,6 +154,9 @@ class GateTest {
     @Test fun failureReceipts() {
         assertEquals("err ring find failed", Receipts.failed(Command.RingFind))
         assertEquals("err launch meet cannot-announce", Receipts.cannotAnnounce(Command.Launch("meet")))
+        assertEquals("err launch meet cannot-launch", Receipts.cannotLaunch(Command.Launch("meet")))
+        assertEquals("err launch meet blocked", Receipts.blocked(Command.Launch("meet")))
+        assertEquals("err ring find rate-limited", Receipts.rateLimited(Command.RingFind))
     }
 
     @Test fun receiptWording() {

@@ -164,6 +164,11 @@ class MainActivity : Activity() {
             }
         })
         root.addView(Button(this).apply {
+            text = "Allow checking launches (Usage access)"
+            // Without it a launch still runs, but its receipt can't confirm the app came to the front.
+            setOnClickListener { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+        })
+        root.addView(Button(this).apply {
             text = "Allow background running (battery)"
             setOnClickListener {
                 startActivity(

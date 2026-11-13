@@ -1,6 +1,9 @@
 # muse-android-bridge — Wire Protocol
 
-**Version:** 0.2 (DRAFT, 2026-11-12). 0.2 records the packages verified on the
+**Version:** 0.3 (DRAFT, 2026-11-12). 0.3 adds the `cannot-launch`,
+`blocked` and `rate-limited` receipts (§6), per-channel rate limits
+(§3, §5), and a cap on `dropped-stale` receipts per connection (§6);
+Chris decided them on issues #7 and #8 on 2026-11-12. 0.2 records the packages verified on the
 pilot phone (§4.3), fixes the receipt list (§6), and states that a channel
 disabled by STOP still marks a message as seen (§5); Chris approved those on
 2026-11-12. Five more came from review on the same day, and Chris
@@ -91,8 +94,11 @@ Rules:
 - The phone's credential is read-mostly by design: stealing it lets an
   attacker *watch* commands and *forge receipts*, never issue commands.
 - A leaked publisher token can only fire registry commands on one channel of
-  one phone. Worst case is an app opening. Revocation = rotate that token /
-  disable that user; the other channel is unaffected.
+  one phone. Worst case is apps opening and the phone ringing at full alarm
+  volume, repeatedly, until the owner flips a STOP switch; the per-channel
+  rate limits (at most 3 `ring find` and 10 launches per 10 minutes) bound
+  how often. Revocation = rotate that token / disable that user; the other
+  channel is unaffected.
 - Credentials live with the publishers (agent secret storage, family
   members' password managers). The phone's owner never handles, sees, or
   types a credential for the owner channel.
@@ -150,6 +156,8 @@ On receiving a message, an executor MUST:
    `err unknown-command` receipt, take no other action. Never attempt to
    interpret, complete, or "helpfully" parse a non-registry body.
 3. Check the channel's local enable state (§7). Disabled → `err <command> disabled`.
+   Then the channel's rate limit (§3): over it → `err <command> rate-limited`,
+   with no announcement or action, and the refused command doesn't count.
 4. Announce on the phone *before* acting: a persistent visual banner plus
    spoken announcement where the executor supports it, naming the action and
    the channel — e.g. "Opening Meet — asked by family." The phone's owner
@@ -173,6 +181,9 @@ err <command> disabled             channel off by STOP (§7)
 err <command> not-implemented      bootstrap rustdesk / update rustdesk until Phase 3
 err <command> cannot-announce      the phone can't show the announcement (§5.4), so nothing was done
 err <command> failed               the action couldn't run (e.g. no sound to ring); not retried
+err <command> cannot-launch        launch only; "Display over other apps" is off, so Android would block it; nothing was done
+err <command> blocked              launch only; the app didn't come to the front within 5 s
+err <command> rate-limited         over the channel's limit (§3): 3 ring find or 10 launches per 10 minutes; nothing was done
 err unknown-command                never echoes the body
 dropped-stale <command>            stale and a registry command on its channel
 dropped-stale                      stale and not a registry command
@@ -181,11 +192,16 @@ ok status report battery=<n> version=<app version> protocol=<version> owner=<on|
 
 A duplicate gets no receipt, including a replayed copy of a message already
 handled that is now older than 120 s (its first receipt stands).
-`dropped-stale` receipts are also published when connectivity allows.
+`dropped-stale` receipts are also published when connectivity allows, at
+most 5 per connection: past that, a replayed backlog is logged only, so
+the receipt for a fresh command isn't queued behind it.
 
 Receipts confirm what the *executor did*, not what the user did next
 (`ok launch meet` means Meet came to the foreground, not that anyone
-joined a call).
+joined a call). The executor checks that through Android's usage events,
+which needs the owner to grant usage access; without it, `ok launch`
+means the launch was sent and not refused, and the executor's log says
+it was unverified.
 
 ## 7. On-phone controls (owner sovereignty)
 
