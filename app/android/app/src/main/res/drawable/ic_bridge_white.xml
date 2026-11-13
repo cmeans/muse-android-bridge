@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The bridge glyph in plain white, for the launcher icon (foreground and monochrome layers). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    >
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M7,1h10c1.1,0 2,0.9 2,2v18c0,1.1 -0.9,2 -2,2H7c-1.1,0 -2,-0.9 -2,-2V3C5,1.9 5.9,1 7,1zM7,4v14h10V4H7zM9,7h6v1.5H9zM9,10h4v1.5H9zM11,19.5a1,1 0,1 0,2 0a1,1 0,1 0,-2 0z" />
+</vector>
