@@ -57,11 +57,8 @@ class MainActivity : Activity() {
             setPadding(0, pad, 0, pad)
             isChecked = prefs.getBoolean(key, false)
             setOnCheckedChangeListener { _, on ->
-                prefs.edit().putBoolean(key, on).apply()
-                // Keep the status notification's text and STOP buttons in step.
-                if (prefs.getBoolean("service_running", false)) {
-                    startService(Intent(this@MainActivity, BridgeService::class.java).setAction(BridgeService.ACTION_REFRESH_STATUS))
-                }
+                // The running service hears the change itself and updates its notification.
+                if (prefs.getBoolean(key, false) != on) prefs.edit().putBoolean(key, on).apply()
                 refresh()
             }
         }
@@ -187,13 +184,33 @@ class MainActivity : Activity() {
         refresh()
     }
 
+    // A STOP button on the notification can change a switch while this screen is showing
+    // (the shade over it doesn't pause it), so follow the preferences, not just onResume.
+    private val stopListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "stop_all" || key == "stop_family") syncSwitches()
+    }
+
+    private fun syncSwitches() {
+        val prefs = Config.prefs(this)
+        // Unchanged values are skipped, so setting them doesn't fire the change listeners again.
+        if (::familySwitch.isInitialized && familySwitch.isChecked != prefs.getBoolean("stop_family", false)) {
+            familySwitch.isChecked = prefs.getBoolean("stop_family", false)
+        }
+        if (::allSwitch.isInitialized && allSwitch.isChecked != prefs.getBoolean("stop_all", false)) {
+            allSwitch.isChecked = prefs.getBoolean("stop_all", false)
+        }
+        refresh()
+    }
+
     override fun onResume() {
         super.onResume()
-        // A STOP button on the notification may have changed a switch meanwhile.
-        val prefs = Config.prefs(this)
-        if (::familySwitch.isInitialized) familySwitch.isChecked = prefs.getBoolean("stop_family", false)
-        if (::allSwitch.isInitialized) allSwitch.isChecked = prefs.getBoolean("stop_all", false)
-        refresh()
+        Config.prefs(this).registerOnSharedPreferenceChangeListener(stopListener)
+        syncSwitches()
+    }
+
+    override fun onPause() {
+        Config.prefs(this).unregisterOnSharedPreferenceChangeListener(stopListener)
+        super.onPause()
     }
 
     private fun refresh() {

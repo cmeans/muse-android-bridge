@@ -30,7 +30,9 @@ import org.intfar.mabridge.protocol.PILOT_REGISTRY
 import org.intfar.mabridge.protocol.RateLimiter
 import org.intfar.mabridge.protocol.StaleReceipts
 import org.intfar.mabridge.protocol.Receipts
+import org.intfar.mabridge.protocol.StopButton
 import org.intfar.mabridge.protocol.StopState
+import org.intfar.mabridge.protocol.statusNotificationFor
 import org.intfar.mabridge.protocol.parseNtfyLine
 import org.intfar.mabridge.protocol.parseNtfyOpenTime
 import org.json.JSONObject
@@ -71,8 +73,16 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // Re-posts the status notification whenever a STOP switch changes, from the owner screen
+    // or the notification itself, so the notification always matches. A field: preferences
+    // hold their listeners weakly.
+    private val stopListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "stop_all" || key == "stop_family") startForegroundWithStatus()
+    }
+
     override fun onCreate() {
         super.onCreate()
+        Config.prefs(this).registerOnSharedPreferenceChangeListener(stopListener)
         tts = TextToSpeech(this, this)
         acks = Executors.newSingleThreadExecutor()
         gate = Gate(
@@ -105,7 +115,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             }
         }
         startForegroundWithStatus()
-        if (intent?.action == ACTION_STOP_ALL || intent?.action == ACTION_STOP_FAMILY || intent?.action == ACTION_REFRESH_STATUS) {
+        if (intent?.action == ACTION_STOP_ALL || intent?.action == ACTION_STOP_FAMILY) {
             if (!running) stopSelf()
             return START_STICKY
         }
@@ -131,6 +141,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onDestroy() {
+        Config.prefs(this).unregisterOnSharedPreferenceChangeListener(stopListener)
         val wasRunning = running
         running = false
         flushBacklog()
@@ -590,21 +601,19 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         nm.createNotificationChannel(
             NotificationChannel(CH_STATUS, "Bridge status", NotificationManager.IMPORTANCE_LOW)
         )
-        val stop = stopState()
-        val text = when {
-            stop.all -> "All commands stopped. Tap to open."
-            stop.family -> "Listening for owner commands; family stopped. Tap to open."
-            else -> "Listening for commands. Tap to open."
-        }
+        val status = statusNotificationFor(stopState())
         val b = Notification.Builder(this, CH_STATUS)
             .setContentTitle("Muse Bridge")
-            .setContentText(text)
+            .setContentText(status.text)
             .setSmallIcon(R.drawable.ic_bridge)
             .setContentIntent(ownerScreen())
             .setOngoing(true)
-        if (!stop.all) {
-            if (!stop.family) b.addAction(Notification.Action.Builder(null, "Stop family", serviceAction(ACTION_STOP_FAMILY, 2)).build())
-            b.addAction(Notification.Action.Builder(null, "Stop all", serviceAction(ACTION_STOP_ALL, 3)).build())
+        for (button in status.buttons) {
+            val action = when (button) {
+                StopButton.FAMILY -> Notification.Action.Builder(null, "Stop family", serviceAction(ACTION_STOP_FAMILY, 2))
+                StopButton.ALL -> Notification.Action.Builder(null, "Stop all", serviceAction(ACTION_STOP_ALL, 3))
+            }
+            b.addAction(action.build())
         }
         val n = b.build()
         if (Build.VERSION.SDK_INT >= 34) {
@@ -620,8 +629,6 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         private const val ACTION_STOP_RING = "org.intfar.mabridge.STOP_RING"
         private const val ACTION_STOP_ALL = "org.intfar.mabridge.STOP_ALL"
         private const val ACTION_STOP_FAMILY = "org.intfar.mabridge.STOP_FAMILY"
-        /** Sent by the owner screen after a STOP switch changes, so the notification matches. */
-        const val ACTION_REFRESH_STATUS = "org.intfar.mabridge.REFRESH_STATUS"
         private const val CH_STATUS = "mab_status"
         private const val CH_ANNOUNCE = "mab_announce"
         private const val STATUS_NOTIFICATION = 1
