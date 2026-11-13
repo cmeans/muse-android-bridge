@@ -26,6 +26,7 @@ import org.intfar.mabridge.protocol.Channel
 import org.intfar.mabridge.protocol.Command
 import org.intfar.mabridge.protocol.Decision
 import org.intfar.mabridge.protocol.Gate
+import org.intfar.mabridge.protocol.logExcerpt
 import org.intfar.mabridge.protocol.PILOT_REGISTRY
 import org.intfar.mabridge.protocol.RateLimiter
 import org.intfar.mabridge.protocol.StaleReceipts
@@ -196,7 +197,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     private fun handle(line: String) {
         parseNtfyOpenTime(line)?.let { openTime ->
             // A new subscription: cached messages older than this are a replayed backlog (§6).
-            stale.connected(openTime).let { if (it > 0) log("stale backlog: $it dropped-stale receipts not sent") }
+            flushBacklog()
+            stale.connected(openTime)
             return
         }
         val msg = parseNtfyLine(line) ?: return // keepalive, or not a usable message
@@ -270,7 +272,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             while (true) {
                 val front = lastResumed(sinceMs - 1_000, System.currentTimeMillis() + 1_000) ?: before
                 if (front == pkg) return true
-                if (SystemClock.elapsedRealtime() >= deadline) return false
+                // No resume recorded at all, before or since: the phone keeps no usable
+                // usage history, so the check can't tell (unverified), not "blocked".
+                if (SystemClock.elapsedRealtime() >= deadline) return if (front == null) null else false
                 Thread.sleep(250)
             }
         } catch (e: Exception) {
@@ -288,8 +292,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         return nm.areNotificationsEnabled() && ch != null && ch.importance != NotificationManager.IMPORTANCE_NONE
     }
 
-    /** Carries out a command; true if it acted on the phone (an app opened or a new ring), which the rate limit counts. */
-    private fun run(command: Command, channel: Channel): Boolean {
+    /** Carries out a command that passed the gate and the rate limit, and posts its receipt. */
+    private fun run(command: Command, channel: Channel) {
         val who = if (channel == Channel.OWNER) "the owner channel" else "family"
         val name = channel.name.lowercase()
         // Launch and ring announce first; without a visible banner they don't run (§1).
@@ -300,7 +304,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             if (!notInstalled) {
                 ack(Receipts.cannotAnnounce(command))
                 log("cannot-announce ($name): ${command.text}: notifications are off")
-                return false
+                return
             }
         }
         when (command) {
@@ -310,13 +314,13 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 if (intent == null) {
                     ack(Receipts.notInstalled(command))
                     log("not-installed ($name): ${command.text}")
-                    return false
+                    return
                 }
                 if (!Settings.canDrawOverlays(this)) {
                     // Android blocks activity starts from the background without it (#7).
                     ack(Receipts.cannotLaunch(command))
                     log("cannot-launch ($name): ${command.text}: 'Display over other apps' is off")
-                    return false
+                    return
                 }
                 announce("Opening ${app.displayName}: asked by $who")
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -336,22 +340,16 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                         log("ok ($name): ${command.text} (unverified)")
                     }
                 }
-                return true
+                return
             }
             Command.RingFind -> {
                 announce("Ringing so you can find the phone: asked by $who")
-                val outcome = startRing(channel)
-                return when (outcome) {
-                    RingOutcome.STARTED, RingOutcome.JOINED -> {
-                        ack(Receipts.ok(command))
-                        log("ok ($name): ${command.text}")
-                        outcome == RingOutcome.STARTED
-                    }
-                    RingOutcome.FAILED -> {
-                        ack(Receipts.failed(command))
-                        log("failed ($name): ${command.text}: no sound played")
-                        false
-                    }
+                if (startRing(channel)) {
+                    ack(Receipts.ok(command))
+                    log("ok ($name): ${command.text}")
+                } else {
+                    ack(Receipts.failed(command))
+                    log("failed ($name): ${command.text}: no sound played")
                 }
             }
             Command.StatusReport -> {
@@ -360,12 +358,12 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
                 ack(Receipts.status(battery, version, PROTOCOL_VERSION, stopState(), launchCheck = hasUsageAccess()))
                 log("ok ($name): ${command.text}")
-                return false
+                return
             }
             Command.BootstrapRustdesk, Command.UpdateRustdesk -> {
                 ack(Receipts.notImplemented(command))
                 log("not-implemented ($name): ${command.text}")
-                return false
+                return
             }
         }
     }
@@ -393,30 +391,28 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     /**
      * Rings at full alarm volume, looping, for 30 s or until Stop ringing, STOP all,
-     * or (for a family ring) STOP family. False if the phone has no sound to play.
-     * A `ring find` while one is ringing keeps the current ring and its end time,
-     * so a publisher repeating the command can't keep the phone ringing.
-     * STARTED only once the ringtone player reports playing, which is as close to
+     * or (for a family ring) STOP family. False if no sound started playing.
+     * A `ring find` while one is ringing keeps the current ring and its end time
+     * (true; it still counted toward the rate limit, like every ring find past STOP).
+     * A new ring is true only once the ringtone player reports playing, which is as close to
      * "audible" as the app can check (Do Not Disturb or OEM audio policy may
      * still silence it). The play check waits outside the service's lock, so a
      * Stop ringing tap isn't held up by it.
      */
-    private enum class RingOutcome { STARTED, JOINED, FAILED }
-
-    private fun startRing(channel: Channel): RingOutcome {
-        val start = beginRing(channel) ?: return RingOutcome.FAILED
-        if (start.alreadyRinging) return RingOutcome.JOINED
+    private fun startRing(channel: Channel): Boolean {
+        val start = beginRing(channel) ?: return false
+        if (start.alreadyRinging) return true
         val deadline = SystemClock.elapsedRealtime() + PLAY_CHECK_MS
         var sawPlaying = start.rt.isPlaying
         while (!sawPlaying && ringGeneration == start.gen && SystemClock.elapsedRealtime() < deadline) {
             Thread.sleep(50)
             sawPlaying = start.rt.isPlaying
         }
-        if (sawPlaying) return RingOutcome.STARTED
+        if (sawPlaying) return true
         // Never reported playing: stop it if it's still this ring, and send `failed`
         // either way, even if Stop ringing ended it during the check.
         synchronized(this) { if (ringGeneration == start.gen) stopRinging("no sound started") }
-        return RingOutcome.FAILED
+        return false
     }
 
     private class RingStart(val rt: Ringtone, val gen: Int, val alreadyRinging: Boolean = false)
@@ -507,7 +503,11 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun ack(text: String) {
-        if (acks.isShutdown) return
+        if (acks.isShutdown) {
+            // The service is stopping (e.g. during a launch check): say so, don't drop it silently.
+            log("receipt not sent, bridge stopping: ${logExcerpt(text)}")
+            return
+        }
         acks.execute {
             var c: HttpURLConnection? = null
             try {

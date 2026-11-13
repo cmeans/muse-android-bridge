@@ -14,7 +14,7 @@ class StaleReceiptsTest {
         // Cached messages: older than the connection's open event.
         repeat(5) { assertTrue(s.shouldSend(open - 600 + it)) }
         repeat(7) { assertFalse(s.shouldSend(open - 300 + it)) }
-        assertEquals(7, s.connected(open + 100))
+        assertEquals(7, s.flush())
     }
 
     @Test fun liveStaleMessagesAlwaysGetReceipts() {
@@ -29,8 +29,10 @@ class StaleReceiptsTest {
         val s = StaleReceipts()
         s.connected(open)
         repeat(8) { s.shouldSend(open - 100) }
-        assertEquals(3, s.connected(open + 50))
-        assertEquals(0, s.connected(open + 60))
+        assertEquals(3, s.flush())
+        s.connected(open + 50)
+        assertEquals(0, s.flush())
+        s.connected(open + 60)
         repeat(5) { assertTrue(s.shouldSend(open + 10)) }
         assertFalse(s.shouldSend(open + 10))
     }
@@ -53,6 +55,7 @@ class StaleReceiptsTest {
         repeat(9) { s.shouldSend(open - 50) }
         assertEquals(4, s.flush())
         assertEquals(0, s.flush())
-        assertEquals(0, s.connected(open + 10))
+        s.connected(open + 10)
+        assertEquals(0, s.flush())
     }
 }

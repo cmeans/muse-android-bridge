@@ -23,9 +23,9 @@ class StaleReceipts {
         return false
     }
 
-    /** A new connection opened at server time [openTimeSec]. Returns how many receipts the last backlog left unsent. */
+    /** A new connection opened at server time [openTimeSec]; call [flush] first to log the last backlog's count. */
     @Synchronized
-    fun connected(openTimeSec: Long): Int = suppressed.also {
+    fun connected(openTimeSec: Long) {
         this.openTimeSec = openTimeSec
         sent = 0
         suppressed = 0
