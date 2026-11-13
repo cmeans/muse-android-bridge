@@ -13,7 +13,7 @@ needed or performed — user/ACL changes are live database operations.
 
 | Principal | mab-pilot-phone-owner | mab-pilot-phone-family | mab-pilot-phone-ack |
 |---|---|---|---|
-| `pilot-phone-phone` (user, on-phone credential) | read-only | read-only | write-only |
+| `pilot-phone-phone` (user, on-phone credential; `<device>-phone` per PROTOCOL §3) | read-only | read-only | write-only |
 | `muse` (the server operator's Muse, existing token) | write-only | — | read-only |
 | `admin` (admin) | full (admin role) | full | full |
 
@@ -30,7 +30,7 @@ token because grants attach to the user.
 - phone user reads owner topic → receives the message
 - phone user publishes to owner topic → 403
 - phone user publishes receipt to ack → 200; reads ack → 403
-- phone user reads family topic → 200; reads the operator's alert topic → 403 (no grant)
+- phone user reads family topic → 200; reads the server operator's alert topic → 403 (no grant)
 - muse token reads ack topic → receives `ok launch meet`
 
 ## Still to provision at later phases

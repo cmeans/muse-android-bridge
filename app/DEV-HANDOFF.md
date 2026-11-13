@@ -31,7 +31,7 @@ the separate Phase 3 design is approved.
 - The ntfy server, topics, users, and ACL separation are live for the
   pilot phone and were verified end to end (`pilot-phone` is the docs'
   example name; the live server uses its own, see
-  server/ntfy-provisioning.md).
+  `server/ntfy-provisioning.md`).
 - Security drills F1 (publisher revocation) and F2 (phone credential
   scope) passed.
 - The Tasker probe received real commands on both channels and resolved

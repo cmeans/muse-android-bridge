@@ -36,8 +36,8 @@ Non-goals:
 
 ## 2. Transport
 
-Commands travel as messages on a self-hosted ntfy server (the operator's
-existing instance; `auth-default-access: deny-all`).
+Commands travel as messages on a self-hosted ntfy server (the server
+operator's existing instance; `auth-default-access: deny-all`).
 
 ### 2.1 Topics (per phone)
 
@@ -90,7 +90,7 @@ The ntfy server's ACL is the enforcement point. Per phone, provision:
 | `<device>-phone` user | read `mab-<device>-owner`, read `mab-<device>-family`, write `mab-<device>-ack` — nothing else |
 | Owner's agent token | write `mab-<device>-owner`, read `mab-<device>-ack` |
 | Each family publisher | write `mab-<device>-family`, read `mab-<device>-ack` |
-| Server admin (operator) | full access (server role, not a bridge credential) |
+| Server admin (server operator) | full access (server role, not a bridge credential) |
 
 Rules:
 
@@ -245,9 +245,10 @@ on a command topic (registry match rejects it); stale/redelivered commands
 (TTL + dedup).
 
 Out of scope: an attacker holding the unlocked phone (the bridge is not the
-weak point there); compromise of the ntfy server itself (operator's existing
-server hardening applies); social engineering of the phone's owner (addressed
-by deployment-stage hardening, not by this protocol).
+weak point there); compromise of the ntfy server itself (the server
+operator's existing server hardening applies); social engineering of the
+phone's owner (addressed by deployment-stage hardening, not by this
+protocol).
 
 The bridge deliberately holds no capability worth stealing beyond opening
 apps and ringing the phone. Screen access (RustDesk) is a separate system
