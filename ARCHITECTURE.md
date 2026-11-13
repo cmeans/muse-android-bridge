@@ -87,7 +87,7 @@ only in **who operates** and **which controller** connects:
 |---|---|---|
 | Operator | A family helper (personally, or the server operator's Muse) | The owner, via their own Muse |
 | Bridge channel used | Family (launch-only) | Owner (full menu) |
-| Controller | The server operator's Holodeck LXC (for the operator's Muse) or the helper's own laptop (human driving) | The owner's Muse's own environment |
+| Controller | The server operator's Holodeck LXC (for the server operator's Muse) or the helper's own laptop (human driving) | The owner's Muse's own environment |
 | Works from | Anywhere with internet — the server and the server operator's controller live at the server operator's home and are always on; the *helpers* do not need to be home | Anywhere the owner is |
 | Phone-side requirement | The owner starts the RustDesk service when asked | The owner starts the RustDesk service when their Muse asks |
 
