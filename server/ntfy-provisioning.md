@@ -2,8 +2,8 @@
 
 > A record of the reference deployment's provisioning, written as a worked
 > example. Device names, users, hosts and credential variable names are
-> generic examples (the live server uses its own). Substitute your own
-> throughout.
+> generic examples (the live server uses its own); file paths are the
+> reference deployment's. Substitute your own throughout.
 
 Server: the server operator's existing ntfy, in a container on their home server.
 Provisioned 2026-11-11 with the maintainer's go. No service restart was

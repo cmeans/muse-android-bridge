@@ -22,9 +22,9 @@ Build interactively on the phone (Tasker's UI generates valid project XML;
 hand-written XML is import-fragile). This sheet is the exact logic to enter,
 from PROTOCOL.md. Export the finished project to `tasker/` in this repo.
 
-The exported `tasker/*.xml` files are the reference deployment's: they name
-its own server and device slug, not `mab-pilot-phone-*`. Edit both before
-importing them anywhere else.
+The exported `tasker/*.xml` files subscribe to the example server
+`ntfy.example.com` and the example slug `pilot-phone`. Replace both with your
+own before importing them.
 
 ## On-phone prerequisites (session checklist)
 
