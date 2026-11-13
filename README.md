@@ -55,15 +55,15 @@ frozen, never-touched family deployment; the app (store/sideload
 install, self-updating, one purpose) is the right Peggy surface.
 Tasker work freezes as validated research: PROTOCOL.md is
 executor-agnostic, so every finding (topics, ACLs, TTL/dedup,
-cached-replay behaviour, registry, STOP semantics) carries over
+cached-replay behavior, registry, STOP semantics) carries over
 unchanged. Next: native Android app v1 — own ntfy subscription,
 registry launch, announce, ack, STOP UI — tested on the pilot phone
 first, same rollout order (Chris → Michele → Peggy). Chris will hand
 implementation to claude-dev once the path is understood; the map,
 current scaffold status, open decisions, and acceptance boundary are
-in `app/DEV-HANDOFF.md`. The scaffold under `app/android/` is a spike,
-not a finished app: it builds (since 2026-11-12) but hasn't run on a
-device.
+in `app/DEV-HANDOFF.md`. The app under `app/android/` builds (since
+2026-11-12) and has passed its first device tests on the pilot phone;
+it isn't ready for family phones yet.
 
 Remote: `cmeans/muse-android-bridge` (private). This VM cannot push over
 git SSH/HTTPS (egress resets SSH), so history is published as one

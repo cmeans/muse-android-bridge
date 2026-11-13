@@ -1,6 +1,14 @@
 # muse-android-bridge — Wire Protocol
 
-**Version:** 0.1 (DRAFT, 2026-11-11)
+**Version:** 0.2 (DRAFT, 2026-11-12). 0.2 records the packages verified on the
+pilot phone (§4.3), fixes the receipt list (§6), and states that a channel
+disabled by STOP still marks a message as seen (§5); Chris approved those on
+2026-11-12. Five more came from review on the same day, and Chris
+approved them on the PR later that day: the `cannot-announce` and
+`failed` receipts (§6), the cache catch-up note (§2.3), every message on
+a command topic recorded as seen, stale or not (§5), and no receipt for
+a duplicate, even a replayed copy of a message already handled (§6).
+0.1: 2026-11-11.
 **Status:** Phase 0 deliverable. This document is the contract. The Tasker pilot
 and the native app are interchangeable executors of this protocol; neither may
 extend it unilaterally.
@@ -62,6 +70,10 @@ bug, not a feature.
   window (at-least-once delivery plus redelivery on reconnect).
 - Publishers MUST NOT rely on store-and-forward. If the phone is offline, the
   correct outcome is that the command expires, not that it fires later.
+- An executor MAY catch up from the server cache on reconnect (ntfy's
+  `since=`), so a command sent during a short reconnect gap still arrives;
+  the TTL and dedup above make that safe, and every cached message older
+  than 120 s is dropped as stale.
 
 ## 3. Authentication and authorization
 
@@ -113,26 +125,31 @@ software is an owner-channel-only act.
 
 | `<app>` | Android package | Notes |
 |---|---|---|
-| `meet` | `com.google.android.apps.meetings` | Verify on device at provisioning |
+| `meet` | `com.google.android.apps.tachyon` | Verified on the pilot phone 2026-11-12 (Google Meet; `…apps.meetings` is not installed there) |
 | `whatsapp` | `com.whatsapp` | |
 | `facebook` | `com.facebook.katana` | |
 | `chrome` | `com.android.chrome` | |
-| `muse` | TBD at provisioning | Resolve from the installed Muse app |
+| `muse` | `com.facebook.aura` | "Muse from Meta"; verified on the pilot phone 2026-11-12 (launcher `.main.AuraMainActivity`) |
 | `rustdesk` | `com.carriez.flutter_hbb` | Present only where RustDesk is deployed |
 
 Package names are verified against the actual phone at provisioning and
 recorded in the executor config. The registry may differ per phone; the
 *command vocabulary* may not.
 
-## 5. Executor behaviour
+## 5. Executor behavior
 
 On receiving a message, an executor MUST:
 
-1. Check freshness and dedup (§2.3). Drop silently (log only).
+1. Check freshness and dedup (§2.3). Every message on a command topic is
+   recorded as seen here, stale or not and before any later check, so a
+   copy redelivered after a STOP is lifted, or after the phone's clock is
+   corrected, cannot run, and a second copy gets no second receipt. A
+   stale message is logged and gets a `dropped-stale` receipt (§6); a
+   duplicate is logged only, since the first receipt stands.
 2. Match the body against the registry for that channel. No match → publish
    `err unknown-command` receipt, take no other action. Never attempt to
    interpret, complete, or "helpfully" parse a non-registry body.
-3. Check the channel's local enable state (§7). Disabled → `err disabled`.
+3. Check the channel's local enable state (§7). Disabled → `err <command> disabled`.
 4. Announce on the phone *before* acting: a persistent visual banner plus
    spoken announcement where the executor supports it, naming the action and
    the channel — e.g. "Opening Meet — asked by family." The phone's owner
@@ -146,14 +163,25 @@ act on messages from any topic other than the two command topics.
 
 ## 6. Receipts (`mab-<device>-ack`)
 
-Body format: `<result> <command>` with an optional short detail token:
+Body format: `<result> <command>` with an optional short detail token. No
+receipt carries a message ID. The complete list:
 
 ```
-ok launch meet
-err launch meet not-installed
-err unknown-command
-dropped-stale launch meet        (also published when connectivity allows)
+ok <command>                       e.g. ok launch meet
+err <command> not-installed        launch only; nothing is announced
+err <command> disabled             channel off by STOP (§7)
+err <command> not-implemented      bootstrap rustdesk / update rustdesk until Phase 3
+err <command> cannot-announce      the phone can't show the announcement (§5.4), so nothing was done
+err <command> failed               the action couldn't run (e.g. no sound to ring); not retried
+err unknown-command                never echoes the body
+dropped-stale <command>            stale and a registry command on its channel
+dropped-stale                      stale and not a registry command
+ok status report battery=<n> version=<app version> protocol=<version> owner=<on|off> family=<on|off>
 ```
+
+A duplicate gets no receipt, including a replayed copy of a message already
+handled that is now older than 120 s (its first receipt stands).
+`dropped-stale` receipts are also published when connectivity allows.
 
 Receipts confirm what the *executor did*, not what the user did next
 (`ok launch meet` means Meet came to the foreground, not that anyone
@@ -203,6 +231,7 @@ report it in `status report` receipts.
 2. Announce mechanism in the Tasker executor: Tasker `Say` + flash vs a
    persistent notification. (Native app will do banner + TTS.)
 3. Does `status report` belong in the pilot, or is it app-phase scope?
-4. Exact Muse app package name and Meet package name on the pilot phone.
-5. Ack-topic behaviour while the phone is on a VPN (pilot phone runs a
+4. ~~Exact Muse app package name and Meet package name on the pilot phone.~~
+   Resolved 2026-11-12 (§4.3).
+5. Ack-topic behavior while the phone is on a VPN (pilot phone runs a
    consumer VPN almost daily) — verify publish and subscribe both survive it.

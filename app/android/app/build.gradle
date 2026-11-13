@@ -36,4 +36,14 @@ kotlin {
 
 dependencies {
     testImplementation 'junit:junit:4.13.2'
+    // org.json is an Android stub on the JVM; tests need the real one.
+    testImplementation 'org.json:json:20250517'
+}
+
+// ManifestQueriesTest and ReleaseNetworkTest read these files directly, so
+// they're declared as inputs: changing one re-runs the unit tests instead of
+// leaving testDebugUnitTest UP-TO-DATE.
+tasks.withType(Test).configureEach {
+    inputs.files(fileTree('src') { include '*/AndroidManifest.xml', '*/res/xml/*.xml' })
+        .withPropertyName('manifestAndNetworkFiles')
 }

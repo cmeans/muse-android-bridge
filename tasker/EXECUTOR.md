@@ -1,5 +1,9 @@
 # Tasker executor — build sheet (pilot: chris-razr)
 
+> Frozen research (2026-11-12): the native app replaces this executor. Where
+> this sheet differs from PROTOCOL.md v0.2 (check order, receipt wording),
+> PROTOCOL wins.
+
 > **Peggy constraint (Chris, 2026-11-11, after working the pilot setup
 > himself):** "this is too much for Peggy." Correct — and by design she
 > never sees any of it. Everything in this sheet is helper-side work,
