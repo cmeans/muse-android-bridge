@@ -24,8 +24,9 @@ until every Phase 1–3 item that bears on it has a recorded result.
 | B2 | Launch behavior on a locked phone | Fire `launch meet` while locked; unlock minutes later | Nothing weird on the lock screen; app is foreground (or predictably not) after unlock; behavior documented for the family runbook |
 | B3 | Announce quality | Trigger each command class; is the banner/TTS understandable and does it name the channel? | A bystander can say afterwards who asked for what |
 | B4 | STOP controls | Disable family channel on-phone; fire family + owner commands; reboot; repeat | Family dead instantly, owner alive; states survive reboot; re-enable is owner-only and local |
-| B5 | Log integrity | Run a mixed day of commands | On-phone log complete, timestamped, matches ack receipts |
+| B5 | Log integrity | Run a mixed day of commands | On-phone log complete, timestamped, matches ack receipts (past 5 stale messages in a reconnect backlog, the log counts the receipts not sent) |
 | B6 | Malformed-input safety | Publish junk bodies, near-miss commands, oversized bodies, wrong-topic messages | Zero actions taken; `err unknown-command` receipts for junk on a command topic, no receipt for other topics (PROTOCOL §5) |
+| B8 | Launch and rate-limit receipts (protocol 0.3) | With usage access on: launch an app (`ok`), the same app again while in front (`ok`), launch on a locked phone (`ok`); with "Display over other apps" off (`err launch <app> cannot-launch`); 4 `ring find` in 10 minutes on one channel, each sent after the previous ring ends (the 4th `err ring find rate-limited`, a 5th logged only); a launch that can't come to the front within 5 s (`err launch <app> blocked`); usage access off (`ok`, log says unverified, `status report` says `launch-check=off`) | Every receipt matches PROTOCOL §6; nothing opens or rings when refused |
 | B7 | Native-app parity (Phase 2) | A1–A5 + B2–B6 rerun against the app executor, including one boring week of background operation | Same results as Tasker executor, or documented differences accepted before swap |
 
 ## C. RustDesk server & Android host — Phase 3

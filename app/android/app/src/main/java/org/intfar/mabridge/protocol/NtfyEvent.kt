@@ -26,3 +26,21 @@ fun parseNtfyLine(line: String): IncomingMessage? {
     val body = o.opt("message") as? String ?: return null
     return IncomingMessage(id, time, topic, body)
 }
+
+/**
+ * The server time of an `open` event, which ntfy sends when a subscription starts, before
+ * any cached messages it replays (PROTOCOL §6's backlog cap); null for any other line.
+ */
+fun parseNtfyOpenTime(line: String): Long? {
+    val o = try {
+        JSONObject(line)
+    } catch (_: Exception) {
+        return null
+    }
+    if (o.opt("event") != "open") return null
+    return when (val t = o.opt("time")) {
+        is Int -> t.toLong()
+        is Long -> t
+        else -> null
+    }
+}
