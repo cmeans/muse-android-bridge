@@ -306,10 +306,12 @@ class MainActivity : Activity() {
         permissions.removeAllViews()
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        val overlaySettings = { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) }
-        val usageSettings = { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+        val open = { intent: Intent -> BridgeControl.openSetting(this, intent) }
+        // From Android 11 this screen ignores the package and opens the full list of apps.
+        val overlaySettings = { open(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))) }
+        val usageSettings = { open(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
         val notificationSettings = {
-            startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+            open(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
         }
         // Each row says what the permission is for, so turning one off is an informed choice.
         // The app can't turn these off itself (overlay, usage access and battery can only be
@@ -333,10 +335,10 @@ class MainActivity : Activity() {
                 "Run in background", "Keeps the bridge listening when the phone sleeps. Off: commands may be late.",
                 pm.isIgnoringBatteryOptimizations(packageName),
                 fix = {
-                    startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+                    open(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
                 },
                 // The request screen above can only grant; the full list is where it's taken back.
-                turnOff = { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) },
+                turnOff = { open(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) },
             ),
         )
         rows.forEachIndexed { i, p ->

@@ -130,7 +130,13 @@ class Ui(private val ctx: Context) {
         // Android 10 (minSdk 29) never draws an app edge to edge, and these insets APIs are 30+.
         if (android.os.Build.VERSION.SDK_INT < 30) return
         view.setOnApplyWindowInsetsListener { v, insets ->
-            val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+            // ime(): edge to edge, the window no longer resizes for the keyboard, so the
+            // bottom padding takes the larger of the navigation bar and the open keyboard,
+            // and the setup screen's lower fields and Save can scroll above it.
+            val bars = insets.getInsets(
+                android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout() or
+                    android.view.WindowInsets.Type.ime()
+            )
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
