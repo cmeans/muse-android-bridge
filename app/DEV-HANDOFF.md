@@ -72,10 +72,11 @@ with the `android-36` platform and build-tools 35.0.0 installed.
 Without an SDK location Gradle stops with "SDK location not found".
 The debug APK lands in `app/build/outputs/apk/debug/`.
 
-Known gaps before any family deployment (2026-11-12: the executor plan,
-`docs/superpowers/plans/2026-11-12-app-executor-v1.md`, added Keystore
-credential storage, the verified registry, and unit tests for check order,
-TTL, dedup and malformed input; what follows is still open):
+Known gaps before any family deployment. On 2026-11-12, PR #4 carried out
+Tasks 1-7 of the executor plan (now `docs/plans/2026-11-12-app-executor-v1.md`
+in the private muse-android-bridge-infra repo): Keystore credential storage,
+the verified registry, and unit tests for check order, TTL, dedup and
+malformed input. What follows is still open:
 
 - prove reconnect/backoff over long runs (6 h and more), Doze, NordVPN,
   and 48-hour battery cost (locking the phone passed on 2026-11-12, for

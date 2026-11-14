@@ -28,6 +28,10 @@ Two help paths share one phone deployment:
   bar for each. Nothing reaches the first real user's phone until the
   relevant items have recorded results.
 
+Specs, scoping docs and implementation plans live in the private
+`cmeans/muse-android-bridge-infra` repo, not here (maintainer, 2026-11-14).
+The contracts above stay with the code.
+
 ## Layout (to be built)
 
 - `tasker/` — the pilot executor: an importable Tasker project implementing
