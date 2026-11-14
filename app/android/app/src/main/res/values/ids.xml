@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fixed ids for the setup fields, so what's typed survives a rotation. -->
+<resources>
+    <item name="setup_server" type="id" />
+    <item name="setup_slug" type="id" />
+    <item name="setup_username" type="id" />
+    <item name="setup_password" type="id" />
+</resources>

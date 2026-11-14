@@ -47,8 +47,9 @@ data class StatusNotification(val text: String, val buttons: List<StopButton>)
  * channels are on, and offers a button only for a channel that's still on. Switching a
  * channel back on is done in the app, never from the notification.
  */
-fun statusNotificationFor(stop: StopState): StatusNotification = when {
+fun statusNotificationFor(stop: StopState, host: String): StatusNotification = when {
     stop.all -> StatusNotification("All commands stopped. Tap to open.", emptyList())
-    stop.family -> StatusNotification("Listening for owner commands; family stopped. Tap to open.", listOf(StopButton.ALL))
-    else -> StatusNotification("Listening for owner and family commands. Tap to open.", listOf(StopButton.FAMILY, StopButton.ALL))
+    // The server is named, so a changed setup shows on the notification too.
+    stop.family -> StatusNotification("Listening for your Muse on $host; family stopped. Tap to open.", listOf(StopButton.ALL))
+    else -> StatusNotification("Listening for your Muse and family on $host. Tap to open.", listOf(StopButton.FAMILY, StopButton.ALL))
 }

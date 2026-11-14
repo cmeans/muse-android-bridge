@@ -1,0 +1,120 @@
+package org.intfar.mabridge
+
+import android.content.Context
+import android.content.res.ColorStateList
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.view.Gravity
+import android.view.View
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+
+/**
+ * Small builders for the owner and setup screens. Plain framework views, no extra
+ * libraries: colors come from res/values (light) and res/values-night (dark).
+ */
+class Ui(private val ctx: Context) {
+    private val density = ctx.resources.displayMetrics.density
+
+    fun dp(v: Int): Int = (v * density).toInt()
+    fun color(id: Int): Int = ctx.getColor(id)
+
+    /** A rounded background, optionally with a border. */
+    fun rounded(fill: Int, radiusDp: Int, stroke: Int? = null, strokeDp: Int = 2) = GradientDrawable().apply {
+        setColor(color(fill))
+        cornerRadius = dp(radiusDp).toFloat()
+        if (stroke != null) setStroke(dp(strokeDp), color(stroke))
+    }
+
+    fun text(t: CharSequence, sizeSp: Float = 15f, colorId: Int = R.color.text_main, weight: Int = 400) =
+        TextView(ctx).apply {
+            text = t
+            textSize = sizeSp
+            setTextColor(color(colorId))
+            typeface = Typeface.create(Typeface.DEFAULT, weight, false)
+        }
+
+    /** The small capitals label above a section ("STOP", "RECENT"). */
+    fun sectionLabel(t: String) = text(t, 13f, R.color.text_muted, 600).apply {
+        letterSpacing = 0.04f
+        setPadding(dp(2), dp(16), 0, dp(8))
+    }
+
+    fun column(gapDp: Int = 0) = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        if (gapDp > 0) {
+            showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+            dividerDrawable = GradientDrawable().apply { setSize(0, dp(gapDp)) }
+        }
+    }
+
+    fun row(gapDp: Int = 0) = LinearLayout(ctx).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        if (gapDp > 0) {
+            showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+            dividerDrawable = GradientDrawable().apply { setSize(dp(gapDp), 0) }
+        }
+    }
+
+    /** A card: white (or dark) on the screen's gray, padded. */
+    fun card(fill: Int = R.color.card_bg, stroke: Int? = null, padV: Int = 16, padH: Int = 18, radius: Int = 16) =
+        column().apply {
+            background = rounded(fill, radius, stroke)
+            setPadding(dp(padH), dp(padV), dp(padH), dp(padV))
+        }
+
+    /** A filled button: the main action on a card or screen. At least 48 dp tall. */
+    fun primaryButton(t: String, onClick: () -> Unit) = Button(ctx).apply {
+        text = t
+        isAllCaps = false
+        textSize = 16f
+        setTextColor(color(android.R.color.white))
+        background = rounded(R.color.button_bg, 12)
+        minHeight = dp(48)
+        stateListAnimator = null
+        setPadding(dp(16), 0, dp(16), 0)
+        setOnClickListener { onClick() }
+    }
+
+    /** An outlined button for a second choice, in [textColor]. */
+    fun outlineButton(t: String, textColor: Int = R.color.text_main, onClick: () -> Unit) = Button(ctx).apply {
+        text = t
+        isAllCaps = false
+        textSize = 16f
+        setTextColor(color(textColor))
+        background = rounded(R.color.card_bg, 12, R.color.card_border)
+        minHeight = dp(48)
+        stateListAnimator = null
+        setOnClickListener { onClick() }
+    }
+
+    /** Text that acts as a link: a real button for TalkBack, 48 dp tall. */
+    fun linkButton(t: String, colorId: Int = R.color.link, onClick: () -> Unit) = Button(ctx).apply {
+        text = t
+        isAllCaps = false
+        textSize = 15f
+        setTextColor(color(colorId))
+        background = null
+        minHeight = dp(48)
+        stateListAnimator = null
+        setPadding(dp(4), 0, dp(4), 0)
+        setOnClickListener { onClick() }
+    }
+
+    /** A colored dot, as on the status card. */
+    fun dot(colorId: Int, sizeDp: Int = 14) = View(ctx).apply {
+        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(color(colorId)) }
+        layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+    }
+
+    fun tint(colorId: Int) = ColorStateList.valueOf(color(colorId))
+
+    fun matchWidth(topMarginDp: Int = 0) = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT,
+    ).apply { topMargin = dp(topMarginDp) }
+
+    fun weighted() = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+}
