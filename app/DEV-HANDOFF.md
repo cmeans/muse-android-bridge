@@ -44,7 +44,8 @@ the separate Phase 3 design is approved.
 
 `app/android/` contains a Kotlin/Gradle scaffold written to make the
 shape concrete: manifest, configuration/registry, a foreground
-`BridgeService`, setup/STOP/log activity, and a boot receiver.
+`BridgeService`, an owner screen (STOP, permissions, recent activity), a setup
+screen, and a boot receiver.
 
 It builds (2026-11-12, claude-dev, on the maintainer's workstation: Gradle
 wrapper 8.14.7 with a pinned checksum, Android Gradle plugin 8.13.2,

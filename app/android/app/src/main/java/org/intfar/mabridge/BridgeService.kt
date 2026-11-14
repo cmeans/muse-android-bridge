@@ -33,6 +33,8 @@ import org.intfar.mabridge.protocol.Receipts
 import org.intfar.mabridge.protocol.STOP_PREF_KEYS
 import org.intfar.mabridge.protocol.StopButton
 import org.intfar.mabridge.protocol.StopState
+import org.intfar.mabridge.protocol.askedBy
+import org.intfar.mabridge.protocol.hostOf
 import org.intfar.mabridge.protocol.statusNotificationFor
 import org.intfar.mabridge.protocol.stopTapFor
 import org.intfar.mabridge.protocol.parseNtfyLine
@@ -71,7 +73,6 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     private val limiter = RateLimiter()
     private val stale = StaleReceipts()
     private lateinit var acks: ExecutorService
-    private val logLock = Any()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -328,7 +329,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     /** Carries out a command that passed the gate and the rate limit, and posts its receipt. */
     private fun run(command: Command, channel: Channel) {
-        val who = if (channel == Channel.OWNER) "the owner channel" else "family"
+        // The owner channel is the owner's own Muse: the announcement says so in their words.
+        val who = askedBy(channel.name.lowercase())
         val name = channel.name.lowercase()
         // Launch and ring announce first; without a visible banner they don't run (§1).
         if ((command is Command.Launch || command == Command.RingFind) && !canAnnounce()) {
@@ -577,17 +579,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     // ---- bookkeeping --------------------------------------------------------
 
-    private fun log(text: String) {
-        val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
-        Log.i("MABridge", text)
-        synchronized(logLock) {
-            try {
-                File(filesDir, LOG_FILE).appendText("$ts | $text\n")
-            } catch (e: Exception) {
-                Log.w("MABridge", "couldn't append to $LOG_FILE", e)
-            }
-        }
-    }
+    private fun log(text: String) = BridgeLog.append(this, text)
 
     /** Opens the owner screen: tapping a bridge notification brings the app to the front. */
     private fun ownerScreen(): PendingIntent = PendingIntent.getActivity(
@@ -618,7 +610,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
         )
-        val status = statusNotificationFor(stopState())
+        val status = statusNotificationFor(stopState(), hostOf(Config.server(this)))
         val b = Notification.Builder(this, CH_STATUS)
             .setContentTitle("Muse Bridge")
             .setContentText(status.text)
@@ -649,7 +641,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     companion object {
         const val PROTOCOL_VERSION = "0.3"
-        const val LOG_FILE = "bridge.log"
+        const val LOG_FILE = BridgeLog.FILE
         private const val ACTION_STOP_RING = "org.intfar.mabridge.STOP_RING"
         private const val ACTION_REPOST_STATUS = "org.intfar.mabridge.REPOST_STATUS"
         private const val CH_STATUS = "mab_status_v2"
