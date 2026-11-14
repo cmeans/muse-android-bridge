@@ -27,9 +27,22 @@ object BridgeLog {
         }
     }
 
-    /** The last [n] lines, oldest first; empty when nothing was logged yet. */
-    fun lastLines(ctx: Context, n: Int): List<String> {
+    /**
+     * The last [n] lines, oldest first; empty when nothing was logged yet. Reads at most
+     * [maxBytes] from the end of the file, so the cost doesn't grow with the log (it has no
+     * cap yet); a line cut by that window is dropped.
+     */
+    fun lastLines(ctx: Context, n: Int, maxBytes: Int = 256 * 1024): List<String> {
         val f = File(ctx.filesDir, FILE)
-        return if (f.exists()) f.readLines().takeLast(n) else emptyList()
+        if (!f.exists()) return emptyList()
+        java.io.RandomAccessFile(f, "r").use { raf ->
+            val len = raf.length()
+            val start = maxOf(0L, len - maxBytes)
+            raf.seek(start)
+            val bytes = ByteArray((len - start).toInt())
+            raf.readFully(bytes)
+            val lines = String(bytes, Charsets.UTF_8).split('\n').filter { it.isNotEmpty() }
+            return (if (start > 0) lines.drop(1) else lines).takeLast(n)
+        }
     }
 }

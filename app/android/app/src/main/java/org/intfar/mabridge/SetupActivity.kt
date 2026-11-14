@@ -132,7 +132,10 @@ class SetupActivity : Activity() {
                 FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL,
             ))
         }
-        setContentView(ScrollView(this).apply { addView(content) })
+        setContentView(ScrollView(this).apply {
+            addView(content)
+            ui.keepClearOfSystemBars(this)
+        })
         refreshBridgeLine()
     }
 
@@ -216,6 +219,16 @@ class SetupActivity : Activity() {
             .setOnCancelListener { result.text = "Not changed." }
             .create()
         dialog.show()
+        confirmDialog = dialog
+    }
+
+    /** The open confirm step, so a rotation can close it instead of leaking its window. */
+    private var confirmDialog: AlertDialog? = null
+
+    override fun onDestroy() {
+        // Rotating mid-confirm closes it; nothing was saved, and the form keeps what was typed.
+        confirmDialog?.dismiss()
+        super.onDestroy()
     }
 
     private fun apply(old: Setup, new: Setup, logLine: String) {

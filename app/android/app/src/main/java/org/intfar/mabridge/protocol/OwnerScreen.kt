@@ -57,16 +57,21 @@ fun ago(ms: Long): String {
 /** One line of the recent-activity list: the log's time (HH:mm) and what happened. */
 data class RecentItem(val time: String, val text: String, val refused: Boolean = false)
 
-private val LOG_LINE = Regex("""\d{4}-\d{2}-\d{2} (\d{2}:\d{2}):\d{2} \| (.*)""")
+private val LOG_LINE = Regex("""(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2}):\d{2} \| (.*)""")
+private val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 private val OUTCOME = Regex("""([a-z-]+) \((owner|family)(?:, [^)]*)?\): (.*)""")
 
 /**
  * A bridge.log line as the owner reads it, or null for lines the short list leaves out
  * (connection chatter, duplicates, receipts): those stay in "Show all activity".
+ * [today] is the phone's date as `yyyy-MM-dd`: lines from another day show their date
+ * ("Nov 12, 22:19"), so yesterday's event can't pass for today's. Null shows the time only.
  */
-fun recentItemFor(line: String, registry: Registry = PILOT_REGISTRY): RecentItem? {
+fun recentItemFor(line: String, registry: Registry = PILOT_REGISTRY, today: String? = null): RecentItem? {
     val m = LOG_LINE.matchEntire(line) ?: return null
-    val (time, text) = m.destructured
+    val (y, mo, d, hm, text) = m.destructured
+    val time = if (today == null || today == "$y-$mo-$d") hm
+    else "${MONTHS.getOrElse(mo.toInt() - 1) { mo }} ${d.toInt()}, $hm"
     plainEvent(text)?.let { return RecentItem(time, it) }
     val o = OUTCOME.matchEntire(text) ?: return null
     val (result, channel, rest) = o.destructured

@@ -117,4 +117,17 @@ class Ui(private val ctx: Context) {
     ).apply { topMargin = dp(topMarginDp) }
 
     fun weighted() = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+
+    /**
+     * Keeps a screen's content out from under the status and navigation bars. Android 15+
+     * draws apps targeting SDK 35+ edge to edge, so without this, scrolled content passes
+     * under the clock and the gesture bar.
+     */
+    fun keepClearOfSystemBars(view: View) {
+        view.setOnApplyWindowInsetsListener { v, insets ->
+            val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+    }
 }

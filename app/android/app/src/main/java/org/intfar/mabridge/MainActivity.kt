@@ -21,6 +21,7 @@ import android.widget.Switch
 import android.widget.TextView
 import org.intfar.mabridge.protocol.PREF_STOP_ALL
 import org.intfar.mabridge.protocol.PREF_STOP_FAMILY
+import org.intfar.mabridge.protocol.STOP_PREF_KEYS
 import org.intfar.mabridge.protocol.StatusKind
 import org.intfar.mabridge.protocol.StopState
 import org.intfar.mabridge.protocol.hostOf
@@ -119,6 +120,7 @@ class MainActivity : Activity() {
         setContentView(ScrollView(this).apply {
             isFillViewport = true
             addView(root)
+            ui.keepClearOfSystemBars(this)
         })
         if (savedInstanceState?.getBoolean(STATE_FULL_LOG) == true) toggleFullLog()
         refresh()
@@ -218,7 +220,16 @@ class MainActivity : Activity() {
 
     // A STOP button on the notification, or the service starting and stopping, can change
     // what this screen shows while it's open (the shade over it doesn't pause it).
-    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> syncSwitches() }
+    // The service writes a preference on every incoming message, so a burst of them is
+    // coalesced into one refresh; a STOP switch still follows at once.
+    private val refreshLater = Runnable { refresh() }
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key in STOP_PREF_KEYS) syncSwitches()
+        else {
+            window.decorView.removeCallbacks(refreshLater)
+            window.decorView.postDelayed(refreshLater, REFRESH_DELAY_MS)
+        }
+    }
 
     private fun syncSwitches() {
         val prefs = Config.prefs(this)
@@ -368,7 +379,8 @@ class MainActivity : Activity() {
         // Reads well back: a few offline hours of reconnect lines would otherwise push every
         // event the owner cares about out of a short window.
         val lines = BridgeLog.lastLines(this, RECENT_SCAN_LINES)
-        val items = lines.asReversed().asSequence().mapNotNull { recentItemFor(it) }.take(5).toList()
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        val items = lines.asReversed().asSequence().mapNotNull { recentItemFor(it, today = today) }.take(5).toList()
         if (items.isEmpty()) {
             val empty = if (lines.isEmpty()) "Nothing yet." else "Nothing in the last ${lines.size} log lines."
             recentList.addView(ui.text(empty, 15f, R.color.text_muted).apply {
@@ -404,6 +416,7 @@ class MainActivity : Activity() {
         const val STATE_FULL_LOG = "full_log_shown"
         const val RECENT_SCAN_LINES = 2_000
         const val FULL_LOG_LINES = 200
+        const val REFRESH_DELAY_MS = 300L
         /** From this width (landscape on most phones, tablets) the screen uses two columns. */
         const val WIDE_DP = 600
     }

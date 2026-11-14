@@ -82,6 +82,22 @@ class OwnerScreenTest {
         }
     }
 
+    @Test fun everyOutcomeHasItsOwnWords() {
+        // The exact lines BridgeService writes.
+        assertEquals("Not installed: Meet · family", item("not-installed (family): launch meet")?.text)
+        assertEquals("Not done, notifications are off: ring · your Muse", item("cannot-announce (owner): ring find: notifications are off")?.text)
+        assertEquals("Not available yet: bootstrap rustdesk · your Muse", item("not-implemented (owner): bootstrap rustdesk")?.text)
+        assertEquals("Bridge stopped", item("service stopped")?.text)
+        assertEquals("Ringing ended", item("ring ended: Stop ringing tapped")?.text)
+    }
+
+    @Test fun anotherDayShowsItsDate() {
+        val line = "2026-11-12 22:19:05 | ok (family): ring find"
+        assertEquals("22:19", recentItemFor(line, today = "2026-11-12")?.time)
+        assertEquals("Nov 12, 22:19", recentItemFor(line, today = "2026-11-13")?.time)
+        assertEquals("22:19", recentItemFor(line)?.time)
+    }
+
     @Test fun plainEventsAndChatter() {
         assertEquals("Bridge started", item("service started")?.text)
         assertEquals("Connected", item("subscribed")?.text)
