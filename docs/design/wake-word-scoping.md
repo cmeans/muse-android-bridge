@@ -1,6 +1,6 @@
 # Hands-free start of a Muse voice conversation: scoping
 
-**Status:** scoping, 2026-11-13. No code in this doc.
+**Status:** scoping, 2026-11-13 (updated 2026-11-14). No code in this doc.
 **Asked for by:** Muse, at the maintainer's direction, 2026-11-12 (Awareness
 `handoff-muse-android-bridge-wake-word-scoping-2026-11-12`).
 **Maintainer decisions since:**
@@ -243,6 +243,11 @@ collides; it needs renaming before production.
 
 - **Owner control:** a new owner switch **"Hey Muse"**, default off. Only the owner
   turns it on; no command can set it. Turning it on explains the mic indicator.
+- **Hey Muse notification action:** shown on the status notification only while
+  waiting for a tap (after a reboot, with the switch on); tapping it turns listening
+  back on. It's the start that keeps the microphone in the background (section 2.2).
+  The proof of concept labels it "Listen" ("Tap Listen to hear Hey Muse"), which
+  collides with "Listening" too and needs renaming before production.
 - **Stop everything** also stops listening: the `AudioRecord` is stopped and
   released, and the service drops the microphone type, so the mic indicator goes off
   at once. Turning Stop everything off doesn't resume listening; the owner turns the
@@ -395,7 +400,7 @@ listening stays off unless the owner (and helper) choose it.
 | Can't show the announcement | Nothing done | `cannot-announce` |
 | Muse not in front within 5 s | No tap | `blocked` |
 | Phone locked | The bridge can't unlock. Launching behind the lock screen is not verified (T8); expected: the owner sees the unlock prompt. Part B does nothing. Announce "Unlock to talk to Muse" | `locked` |
-| Node not found (Muse updated) | No tap; announce "Tap the phone button" | `button-not-found` |
+| Node not found (Muse updated) | No tap; announce "Tap the phone button to talk" | `button-not-found` |
 | Tap sent, no capture seen within 3 s | Logged for tuning | `no-call` |
 | Call started (Part B) | Done | `ok` |
 | Stop everything on | Not listening, so no wake | (`disabled` if a wake raced the switch) |
@@ -444,7 +449,7 @@ the bridge isn't on Play, but this decides whether it ever could be.
 ([Android](https://developer.android.com/privacy-and-security/advanced-protection-mode)),
 which covers installing the bridge itself. Secondary reports say Android 17 extends it
 to block the accessibility API for apps that don't declare `isAccessibilityTool` and
-to revoke grants already made; the bridge wouldn't qualify (Play policy, below). Not
+to revoke grants already made; the bridge wouldn't qualify (Play policy, above). Not
 verified against Google's Android 17 pages (T7c). An owner who turns Advanced
 Protection on, or an OS update, could switch Part B off.
 
