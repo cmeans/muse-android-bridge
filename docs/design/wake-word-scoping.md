@@ -23,8 +23,10 @@
     button; the log keeps "STOP all".
   - **Tap test:** go ahead on test-moto during the proof of concept.
 
-Devices: test-moto is a moto g 5G on Android 14; the pilot phone is a Razr+ 2023 on
-Android 16 (`ARCHITECTURE.md` §6). Results from test-moto hold for Android 14 only.
+Devices: test-moto is a moto g 5G on Android 14 (Awareness
+`handoff-muse-android-bridge-muse-voice-intent-answers-2026-11-12`); the pilot phone
+is a Razr+ 2023 on Android 16 (`ARCHITECTURE.md` §6). Results from test-moto hold for
+Android 14 only.
 
 **Goal:** the owner says "Hey Muse", and a Muse voice conversation is already
 running, with no touch anywhere.
@@ -77,7 +79,7 @@ from `BOOT_COMPLETED` and gets 6 h a day on targetSdk 35+). It targets SDK 36.
 | [microWakeWord](https://github.com/OHF-Voice/micro-wake-word) | Apache-2.0 | Train a model with the project's notebook on synthetic samples from Piper TTS plus published negative features; "Training new models is intended for advanced users" | TFLite (quantized streaming model, inference every 30 ms); outputs a probability per window. Shipped inside the Home Assistant Android app, which [says](https://www.home-assistant.io/voice_control/android/) detection "works even when your device is locked or the app is in the background" | None from the project. A vendor benchmark ([LiveKit](https://github.com/livekit/livekit-wakeword), one phrase, "may favor our models") caught 0%, 0% and 24% of wake words at 0.1, 0.5 and 1 false alarm per hour. A user of synthetic-TTS-only custom models reports "False trigger rate is really bad" ([thread](https://community.home-assistant.io/t/custom-microwakeword-models-needed-vance-hex-mochi-personal-voice-samples-included/1009193)) | **Candidate** for production, but only if T4 shows a trained "Hey Muse" model does far better than that benchmark |
 | [sherpa-onnx KWS](https://k2-fsa.github.io/sherpa/onnx/kws/index.html) | Apache-2.0 ([repo](https://github.com/k2-fsa/sherpa-onnx)) | No training: open vocabulary. Write the phrase as tokens (`text2token`) with a boost score and trigger threshold | Kotlin/Java API, Android arm64/arm32; prebuilt KWS APK. English model `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01`. The result ([`KeywordSpotterResult`](https://github.com/k2-fsa/sherpa-onnx/blob/master/sherpa-onnx/kotlin-api/KeywordSpotter.kt)) has only `keyword`, `tokens` and `timestamps`: **no score**. Observed 2026-11-13: the model's "-mobile" variant aborts in sherpa-onnx 2.0.1 (ONNX Reshape in `/downsample`; also on the host with the Python package); the regular variant works and detected "LIGHT UP" in the model's test wav on the host | None published; only the threshold trade-off | **Proof of concept** (approved, in progress): "Hey Muse" works on day one |
 | [openWakeWord](https://github.com/dscripka/openWakeWord) | Code Apache-2.0; **pretrained models CC BY-NC-SA 4.0** | Colab notebook trains a basic model in under an hour on synthetic clips | ONNX/TFLite; README mentions no Android or mobile runtime | Project target "<5% false-reject rates and <0.5/hour false-accept rates with appropriate threshold tuning". LiveKit's vendor benchmark caught 32%, 46% and 52% at 0.1, 0.5 and 1 false alarm per hour | **Candidate**: better than microWakeWord in that benchmark, but no Android precedent, so more integration work |
-| Porcupine (Picovoice) | Commercial | Console trains a phrase in seconds | Android SDK | About 97% acceptance at 1 false alarm per 10 h, read from the chart ([benchmark](https://picovoice.ai/docs/benchmark/wake-word/)) | **Ruled out.** Picovoice ended the Free Tier on 2026-06-30 and disabled its keys; per a report quoting Picovoice, "The SDK does not run without a valid key" and "There is no non-commercial tier planned" ([thread](https://community.home-assistant.io/t/fyi-picovoice-confirmed-free-tier-accesskeys-will-stop-working-after-june-30-2026/1012744)). A third party lists paid plans from $6,000 a year ([Activepieces](https://www.activepieces.com/blog/picovoice-pricing-2026-free-foundation-enterprise), not confirmed on Picovoice's page) |
+| Porcupine (Picovoice) | Commercial | Console trains a phrase in seconds | Android SDK | About 97% acceptance at 1 false alarm per 10 h, read from the chart ([benchmark](https://picovoice.ai/docs/benchmark/wake-word/)) | **Ruled out.** Per a report, Picovoice's Free Tier keys stop working after 2026-06-30 (the source says the tier "will end"); the same report quoting Picovoice, "The SDK does not run without a valid key" and "There is no non-commercial tier planned" ([thread](https://community.home-assistant.io/t/fyi-picovoice-confirmed-free-tier-accesskeys-will-stop-working-after-june-30-2026/1012744)). A third party lists paid plans from $6,000 a year ([Activepieces](https://www.activepieces.com/blog/picovoice-pricing-2026-free-foundation-enterprise), not confirmed on Picovoice's page) |
 | Android's own hotword API (`AlwaysOnHotwordDetector`, `HotwordDetectionService`) | n/a | n/a | AOSP code requires `CAPTURE_AUDIO_HOTWORD` to use the detector ([AOSP](https://android.googlesource.com/platform/frameworks/base/+/335af8b598b3d94c537045d8207b773a56faeeae)). The detector belongs to the voice-interaction service (the default assistant); the bridge isn't one. Whether a sideloaded app could ever hold that permission is not verified here | n/a | **Ruled out** for the bridge |
 
 No engine's Android library size is published; measure the APK growth in the proof of
@@ -119,17 +121,26 @@ Sources: [FGS types](https://developer.android.com/develop/background-work/servi
      action on the status notification or opens the bridge**.
    - **Observed 2026-11-13 on test-moto (Android 14):** the microphone type started
      fine from the owner screen (`types=0x40000080`, special use plus microphone).
-   - **Before Android 14** (the bridge's minSdk is 29, Android 10): the system lets a
-     background start create the service, "but the service wouldn't have access to the
-     needed resources, and if it tried to use them, you'd get an exception"
-     ([Android](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)).
-     So on Android 10 to 13 a background start isn't refused up front; listening would
-     fail later instead (T2b).
+   - **Before Android 14** (the bridge's minSdk is 29, Android 10), it depends on the
+     version ([background-start restrictions](https://developer.android.com/develop/background-work/services/fgs/restrictions-bg-start)):
+     - **Android 12 and 13** (targetSdk 31+) refuse a background foreground-service
+       start up front with `ForegroundServiceStartNotAllowedException`, unless the
+       start is exempt. The bridge is exempt through `SYSTEM_ALERT_WINDOW`, or when the
+       start comes from a notification action.
+     - **Android 11 to 13:** a start that isn't refused (any start on 11, an exempt
+       one on 12 and 13) creates the service, but the microphone
+       is a while-in-use permission: "the service wouldn't have access to the needed
+       resources, and if it tried to use them, you'd get an exception". In practice
+       the likely result is silence (no audio) rather than an exception (T2b).
+     - **Android 10** has no while-in-use restriction on the microphone (it arrived in
+       Android 11), so a background start can listen.
 3. **Once running, listening continues** in the background and on the lock screen
    (the Home Assistant app does this with microWakeWord). Not yet verified for this
    bridge (T3, Android 14 only).
 4. **Privacy indicator:** on Android 12+ a non-system app using the microphone shows
-   the mic indicator whenever the mic is unmuted ([AOSP](https://source.android.com/docs/core/permissions/privacy-indicators)).
+   the mic indicator whenever the mic is unmuted ([AOSP](https://source.android.com/docs/core/permissions/privacy-indicators);
+   the version is from the [Android 12 behavior changes](https://developer.android.com/about/versions/12/behavior-changes-all):
+   "On devices that run Android 12 or higher … an icon appears").
    While the `AudioRecord` runs, the indicator is on. That is honest and can't be
    avoided; the owner must be told before turning listening on. **Android 10 and 11
    have no indicator**, so the owner would have no sign the mic is open.
@@ -205,9 +216,9 @@ phone only with the maintainer's go.
 ### 2.5 STOP, announce, log, receipt
 
 Naming: the maintainer chose **Stop everything** for both the owner screen and the
-notification button (2026-11-14 04:20 UTC); the log keeps "STOP all". On `main` they
-still say "Stop all commands" and "Stop all"; branch `feat/owner-screen-polish`
-renames both.
+notification button (2026-11-14 04:20 UTC); the log keeps "STOP all". Earlier builds
+said "Stop all commands" (owner screen) and "Stop all" (notification); PR #19 renames
+both.
 
 The mic state needs its own words. "Listening" already means the ntfy connection: the
 owner screen's headline and the notification's "Listening for your Muse…". This doc
@@ -291,8 +302,9 @@ listening stays off unless the owner (and helper) choose it.
      restricted settings" ([Google help](https://support.google.com/android/answer/12623953);
      [Bayton](https://bayton.org/android/android-13-restricted-permissions/)). Per
      [9to5Google](https://9to5google.com/2024/09/12/android-15-sideloaded-apps-restrictions/),
-     Android 15's CDD makes this list mandatory for sideloaded apps (accessibility,
-     notification listener, device admin, display over other apps, usage access).
+     Android 15's CDD makes this list mandatory for sideloaded apps; it includes
+     accessibility, notification listener, device admin, display over other apps and
+     usage access (the source also lists the Dialer and SMS roles and SMS permissions).
      Not verified: whether a lock-screen confirmation is required, Enhanced
      Confirmation Mode's effect, and whether an adb or F-Droid-style install counts as
      sideloaded (the bridge already holds overlay and usage access after an adb
@@ -324,11 +336,12 @@ listening stays off unless the owner (and helper) choose it.
        10 s of a wake, no command can trigger it (only the local wake path), and a
        separate owner switch.
 3. **Tasker + AutoInput.** AutoInput is an accessibility-based Tasker plugin, free with
-   ads or paid ([Play data](https://appgoblin.info/apps/com.joaomgcd.autoinput)), that
-   clicks by text or coordinates. With the native tap test approved, it's now only a
+   ads plus in-app purchases ([Play data](https://appgoblin.info/apps/com.joaomgcd.autoinput)),
+   that clicks by text or coordinates. With the native tap test approved, it's now only a
    fallback way to measure reliability over many tries without writing the service.
-   Not for family phones (another app with accessibility rights, and Tasker was
-   removed from the pilot phone).
+   Not for family phones: it's another app with accessibility rights, and the project
+   replaced the Tasker executor with the native app (`README.md`, maintainer decision
+   2026-11-11), so Tasker is not part of a deployment.
 4. **ADB / Shizuku: ruled out for a frozen family deployment.** Non-root Shizuku has
    to be restarted after every reboot with wireless debugging turned on
    ([Shizuku manual](https://shizuku.rikka.app/guide/setup/)); developer options stay
@@ -466,16 +479,18 @@ conversation defaults to that phone.
 
 ## 5. Test plan
 
-Observed so far (2026-11-13, proof of concept): T1 partly (the "-mobile" sherpa-onnx
-model aborts, the regular one works on the host); T2's first item on test-moto (the
-microphone type started from the owner screen, `types=0x40000080`). Everything else
-is not yet verified. test-moto results hold for Android 14 only.
+Observed so far (2026-11-13, proof of concept, Dev's runs): T1 partly (the "-mobile"
+sherpa-onnx model aborts, the regular one works on the host); T2's first item on
+test-moto (the microphone type started from the owner screen, `types=0x40000080`);
+and the regular model on test-moto detected two real-voice "Hey Muse" phrases
+(23:56 CST). That shows a working path, not a T4 measurement.
+Everything else is not yet verified. test-moto results hold for Android 14 only.
 
 | # | Check | Where |
 | --- | --- | --- |
 | T1 | APK size growth and native libraries for sherpa-onnx and the TFLite runtime; which model variants load on the phone (the "-mobile" gigaspeech variant aborts in sherpa-onnx 2.0.1) | build, test-moto |
 | T2 | Microphone FGS: starting from the owner screen (observed OK) and from the notification action works in the background; from `BOOT_COMPLETED` throws, as documented; re-adding the microphone type from the background after dropping it throws (suspected); a STOP toggle keeps the microphone type (every `startForeground` passes the full type set); the same on SDK < 34 | test-moto (Android 14 only); an Android 12 or 13 emulator for SDK < 34 |
-| T2b | Android 12 and 13: what a background start of listening does (no refusal up front; the capture fails or gets no audio) | Android 12 and 13 emulators |
+| T2b | Android 11 to 13: what an exempt background start of listening does (expected: the service starts, the capture gets no audio or fails); on 12 and 13, that a non-exempt start is refused up front | Android 11, 12 and 13 emulators |
 | T3 | Listening keeps working screen off, locked, and in Doze for 6 h | test-moto (Android 14 only) |
 | T4 | False accepts over 8 h of TV and talk at 2 m; misses over 50 tries at 1 m and 3 m; per engine; also other languages and strong accents (the proof-of-concept model is English, trained on GigaSpeech) | test-moto |
 | T5 | Which audio source Muse's call uses; that an ordinary bridge gets silence, not an error, if still capturing; that the bridge's `AudioRecord` is stopped during the call, including with the accessibility service enabled | test-moto, during the approved tap test's call |
