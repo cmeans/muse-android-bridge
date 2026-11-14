@@ -87,6 +87,9 @@ class Ui(private val ctx: Context) {
         background = rounded(R.color.card_bg, 12, R.color.card_border)
         minHeight = dp(48)
         stateListAnimator = null
+        // No default vertical padding, as primaryButton: at the largest font size the label
+        // must fit a fixed-height row.
+        setPadding(dp(16), 0, dp(16), 0)
         setOnClickListener { onClick() }
     }
 
@@ -124,6 +127,8 @@ class Ui(private val ctx: Context) {
      * under the clock and the gesture bar.
      */
     fun keepClearOfSystemBars(view: View) {
+        // Android 10 (minSdk 29) never draws an app edge to edge, and these insets APIs are 30+.
+        if (android.os.Build.VERSION.SDK_INT < 30) return
         view.setOnApplyWindowInsetsListener { v, insets ->
             val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
