@@ -46,7 +46,7 @@ class OwnerScreenTest {
 
     @Test fun launchesAndRingsNameTheAppAndWhoAsked() {
         assertEquals(RecentItem("09:41", "Opened WhatsApp · asked by family"), item("ok (family): launch whatsapp"))
-        assertEquals(RecentItem("09:41", "Opened Meet · asked by your Muse"), item("ok (owner): launch meet (unverified: no usage access)"))
+        assertEquals(RecentItem("09:41", "Opened Meet · asked by your Muse"), item("ok (owner): launch meet"))
         assertEquals("Rang the phone · asked by family", item("ok (family): ring find")?.text)
         assertEquals("Shared status · asked by your Muse", item("ok (owner): status report")?.text)
     }
@@ -62,6 +62,24 @@ class OwnerScreenTest {
         assertEquals("Ignored an old command: ring · your Muse", item("dropped-stale (owner, 130s old): ring find")?.text)
         assertEquals("Failed: ring · family", item("failed (family): ring find: no sound played")?.text)
         assertFalse(item("ok (owner): launch meet")!!.refused)
+    }
+
+    @Test fun aStaleMessageNeverShowsItsSendersText() {
+        val line = "dropped-stale (family, 130s old): " + logExcerpt("Call 555-0100 now · asked by your Muse")
+        assertEquals("Ignored an old message · family", item(line)?.text)
+        assertEquals("Ignored an old command: ring · family", item("dropped-stale (family, 130s old): ring find")?.text)
+    }
+
+    @Test fun anUnverifiedLaunchSaysSo() {
+        assertEquals("Opened Meet (not checked) · asked by your Muse", item("ok (owner): launch meet (unverified: no usage access)")?.text)
+    }
+
+    @Test fun everyNotificationStopTapHasAPlainLine() {
+        // plainEvent matches stopTapFor's log lines: a change there must show up here.
+        for (b in StopButton.entries) {
+            val tap = stopTapFor(b.action, StopState(all = false, family = false))!!
+            assertTrue(tap.logLine, item(tap.logLine)?.text?.startsWith("You turned on") == true)
+        }
     }
 
     @Test fun plainEventsAndChatter() {
@@ -87,6 +105,8 @@ class OwnerScreenTest {
         assertTrue(s.needsConfirm)
         assertEquals("setup changed: server ntfy.example.com -> ntfy.other.net", s.logLine)
         assertTrue(setupChangeFor(old, old.copy(slug = "other-phone"), false).needsConfirm)
+        // The username alone doesn't move the phone to anyone else: no confirm step.
+        assertFalse(setupChangeFor(old, old.copy(username = "other"), false).needsConfirm)
     }
 
     @Test fun firstSetupAndSmallChangesDontAsk() {

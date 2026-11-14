@@ -1,15 +1,12 @@
 package org.intfar.mabridge
 
-import android.Manifest
 import android.app.Activity
 import android.app.NotificationManager
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.BatteryManager
-import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
@@ -175,7 +172,11 @@ class MainActivity : Activity() {
             addView(muse.first, ui.weighted())
             addView(family.first, ui.weighted())
         }
-        startButton = ui.primaryButton("Start bridge") { BridgeControl.start(this); refresh() }
+        startButton = ui.primaryButton("Start bridge") {
+            requestNotifications()
+            BridgeControl.start(this)
+            refresh()
+        }
         statusCard = ui.card(radius = 20).apply {
             addView(ui.row(12).apply {
                 addView(statusDot)
@@ -300,8 +301,9 @@ class MainActivity : Activity() {
             startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
         }
         // Each row says what the permission is for, so turning one off is an informed choice.
-        // An app can't take back its own permissions: both buttons open Android's setting,
-        // where the owner switches it. "Fix" for one that's off, "Turn off" for one that's on.
+        // The app can't turn these off itself (overlay, usage access and battery can only be
+        // changed in Settings; a notification revoke would wait for the next process kill), so
+        // both buttons open Android's setting. "Fix" for one that's off, "Turn off" for one that's on.
         val rows = listOf(
             Permission(
                 "Show notifications", "Announces launches and rings first. Off: they're refused.",
@@ -363,10 +365,13 @@ class MainActivity : Activity() {
 
     private fun refreshRecent() {
         recentList.removeAllViews()
-        val lines = BridgeLog.lastLines(this, 200)
-        val items = lines.asReversed().mapNotNull { recentItemFor(it) }.take(5)
+        // Reads well back: a few offline hours of reconnect lines would otherwise push every
+        // event the owner cares about out of a short window.
+        val lines = BridgeLog.lastLines(this, RECENT_SCAN_LINES)
+        val items = lines.asReversed().asSequence().mapNotNull { recentItemFor(it) }.take(5).toList()
         if (items.isEmpty()) {
-            recentList.addView(ui.text("Nothing yet.", 15f, R.color.text_muted).apply {
+            val empty = if (lines.isEmpty()) "Nothing yet." else "Nothing in the last ${lines.size} log lines."
+            recentList.addView(ui.text(empty, 15f, R.color.text_muted).apply {
                 setPadding(0, ui.dp(12), 0, ui.dp(12))
             })
         }
@@ -380,7 +385,7 @@ class MainActivity : Activity() {
             recentList.addView(row, ui.matchWidth())
             if (i < items.lastIndex) recentList.addView(divider())
         }
-        if (fullLog.visibility == View.VISIBLE) fullLog.text = fullLogText(lines)
+        if (fullLog.visibility == View.VISIBLE) fullLog.text = fullLogText(lines.takeLast(FULL_LOG_LINES))
     }
 
     private fun fullLogText(lines: List<String>) =
@@ -390,29 +395,15 @@ class MainActivity : Activity() {
         val show = fullLog.visibility != View.VISIBLE
         fullLog.visibility = if (show) View.VISIBLE else View.GONE
         showAll.text = if (show) "Hide full log" else "Show all activity"
-        if (show) fullLog.text = fullLogText(BridgeLog.lastLines(this, 200))
+        if (show) fullLog.text = fullLogText(BridgeLog.lastLines(this, FULL_LOG_LINES))
     }
 
-    /**
-     * Asks for notifications once with Android's prompt; after that (a second refusal makes
-     * the prompt stop showing) the Fix button opens the app's notification settings.
-     */
-    private fun requestNotifications() {
-        val prefs = Config.prefs(this)
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
-            !prefs.getBoolean(PREF_ASKED_NOTIFICATIONS, false)
-        ) {
-            prefs.edit().putBoolean(PREF_ASKED_NOTIFICATIONS, true).apply()
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
-        } else if (!(getSystemService(NOTIFICATION_SERVICE) as NotificationManager).areNotificationsEnabled()) {
-            startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
-        }
-    }
+    private fun requestNotifications() = BridgeControl.requestNotifications(this)
 
     private companion object {
-        const val PREF_ASKED_NOTIFICATIONS = "asked_notifications"
         const val STATE_FULL_LOG = "full_log_shown"
+        const val RECENT_SCAN_LINES = 2_000
+        const val FULL_LOG_LINES = 200
         /** From this width (landscape on most phones, tablets) the screen uses two columns. */
         const val WIDE_DP = 600
     }

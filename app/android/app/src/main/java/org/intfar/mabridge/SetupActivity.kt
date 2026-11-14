@@ -21,7 +21,7 @@ import org.intfar.mabridge.protocol.setupChangeFor
  * The helper's setup: server, device name, username and password. It sits behind
  * "Change setup…" on the owner screen. Moving a set-up phone to another server or device
  * name asks first, showing the old and new host; every saved change is logged, and a
- * running bridge restarts so the change applies at once (PROTOCOL §7).
+ * running bridge restarts so the change applies at once.
  */
 class SetupActivity : Activity() {
     private lateinit var ui: Ui
@@ -113,6 +113,7 @@ class SetupActivity : Activity() {
         root.addView(bridgeLine)
         root.addView(ui.row(10).apply {
             addView(ui.primaryButton("Start bridge") {
+                BridgeControl.requestNotifications(this@SetupActivity)
                 val missing = BridgeControl.start(this@SetupActivity)
                 result.text = if (missing.isEmpty()) "Starting…"
                 else "Can't start: missing or invalid ${missing.joinToString(", ")}. If you just typed them, tap Save setup first."
@@ -146,6 +147,7 @@ class SetupActivity : Activity() {
     }
 
     private fun save() {
+        result.text = ""
         val serverText = server.text.toString().trim().lowercase()
         if (!isValidServer(serverText, Config.isDebugBuild(this))) {
             result.text = "Not saved: the server address must be https:// and a host name, optionally with :port, and nothing after it. Example: https://ntfy.example.com"
@@ -166,14 +168,18 @@ class SetupActivity : Activity() {
             result.text = "Nothing changed."
             return
         }
-        if (change.needsConfirm) confirm(old, new) { apply(new, change.logLine) } else apply(new, change.logLine)
+        if (change.needsConfirm) confirm(old, new) { apply(old, new, change.logLine) } else apply(old, new, change.logLine)
     }
 
-    /** The confirm step: the safe choice is the default and comes first. */
+    /**
+     * The confirm step. The safe choice comes first and is the filled button; tapping outside
+     * or Back changes nothing.
+     */
     private fun confirm(old: Setup, new: Setup, onSwitch: () -> Unit) {
         val serverChanged = old.server != new.server
+        lateinit var dialog: AlertDialog
         val body = ui.column(10).apply {
-            setPadding(ui.dp(24), ui.dp(8), ui.dp(24), 0)
+            setPadding(ui.dp(24), ui.dp(8), ui.dp(24), ui.dp(16))
             val box = ui.column(8).apply {
                 background = ui.rounded(R.color.tile_bg, 14)
                 setPadding(ui.dp(14), ui.dp(14), ui.dp(14), ui.dp(14))
@@ -196,22 +202,32 @@ class SetupActivity : Activity() {
                 else "Whoever can send to the new device name will be able to open apps and ring this phone. The change is logged.",
                 15f, R.color.text_muted,
             ))
+            addView(ui.primaryButton(if (serverChanged) "Keep current server" else "Keep current name") {
+                dialog.cancel()
+            }, ui.matchWidth(6))
+            addView(ui.outlineButton("Switch anyway", R.color.danger_text) {
+                dialog.dismiss()
+                onSwitch()
+            }, ui.matchWidth())
         }
-        AlertDialog.Builder(this)
+        dialog = AlertDialog.Builder(this)
             .setTitle(if (serverChanged) "Switch to a new server?" else "Change this phone's device name?")
             .setView(body)
-            .setPositiveButton(if (serverChanged) "Keep current server" else "Keep current name") { _, _ ->
-                result.text = "Not changed."
-            }
-            .setNegativeButton("Switch anyway") { _, _ -> onSwitch() }
-            .show()
+            .setOnCancelListener { result.text = "Not changed." }
+            .create()
+        dialog.show()
     }
 
-    private fun apply(new: Setup, logLine: String) {
+    private fun apply(old: Setup, new: Setup, logLine: String) {
         Config.prefs(this).edit()
             .putString("server", new.server)
             .putString("slug", new.slug)
             .putString("username", new.username)
+            .apply {
+                // State that belonged to the old server or topics would describe the new one:
+                // the status card's "last connected", and the id the next subscribe resumes from.
+                if (old.server != new.server || old.slug != new.slug) remove("last_connected").remove("last_message_id")
+            }
             .commit() // written before the restart below reads it
         if (pwField.text.isNotEmpty()) {
             val pw = CharArray(pwField.text.length).also { pwField.text.getChars(0, it.size, it, 0) }

@@ -167,6 +167,8 @@ On receiving a message, an executor MUST:
    spoken announcement where the executor supports it, naming the action and
    the channel — e.g. "Opening Meet — asked by family." The phone's owner
    must always be able to tell, afterwards, who asked for what.
+   The owner channel is announced as "your Muse" ("Opening Meet: asked by
+   your Muse"), since that's who the owner's channel speaks for.
 5. Perform the action.
 6. Append to the on-phone log: timestamp, channel, command, result.
 7. Publish a receipt (§6).

@@ -20,7 +20,7 @@ class StatusNotificationTest {
         assertEquals("Stop family", StopButton.FAMILY.label)
         assertEquals(PREF_STOP_FAMILY, StopButton.FAMILY.prefKey)
         assertEquals("STOP family", StopButton.FAMILY.switchName)
-        assertEquals("Stop all", StopButton.ALL.label)
+        assertEquals("Stop everything", StopButton.ALL.label)
         assertEquals(PREF_STOP_ALL, StopButton.ALL.prefKey)
         assertEquals("STOP all", StopButton.ALL.switchName)
         assertEquals("stop_family", PREF_STOP_FAMILY)
@@ -42,7 +42,7 @@ class StatusNotificationTest {
     @Test fun allStoppedWinsAndOffersNoButtons() {
         for (family in listOf(false, true)) {
             val s = statusNotificationFor(StopState(all = true, family = family), "ntfy.example.com")
-            assertEquals("All commands stopped. Tap to open.", s.text)
+            assertEquals("Everything stopped. Tap to open.", s.text)
             assertEquals(emptyList<StopButton>(), s.buttons)
         }
     }

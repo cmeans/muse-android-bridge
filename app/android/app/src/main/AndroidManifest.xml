@@ -44,13 +44,13 @@
             </intent-filter>
         </activity>
 
-        <!-- specialUse, not dataSync: dataSync can't start from BOOT_COMPLETED and
-             gets ~6 h a day on targetSdk 35+ (issue #1). -->
         <!-- The helper's setup, behind "Change setup…" on the owner screen. -->
         <activity
             android:name=".SetupActivity"
             android:exported="false" />
 
+        <!-- specialUse, not dataSync: dataSync can't start from BOOT_COMPLETED and
+             gets ~6 h a day on targetSdk 35+ (issue #1). -->
         <service
             android:name=".BridgeService"
             android:exported="false"

@@ -75,7 +75,8 @@ fun recentItemFor(line: String, registry: Registry = PILOT_REGISTRY): RecentItem
     val command = rest.substringBefore(": ").substringBefore(" (")
     val what = describe(command, registry)
     return when (result) {
-        "ok" -> RecentItem(time, "${what.done} · asked by $who")
+        // An unverified launch ran, but nothing confirmed the app came to the front.
+        "ok" -> RecentItem(time, "${what.done}${if ("unverified" in rest) " (not checked)" else ""} · asked by $who")
         "disabled" -> RecentItem(time, "Refused, stopped: ${what.name} · $who", refused = true)
         "rate-limited" -> RecentItem(time, "Refused, too many: ${what.name} · $who", refused = true)
         "unknown-command" -> RecentItem(time, "Refused an unknown command · $who", refused = true)
@@ -85,7 +86,13 @@ fun recentItemFor(line: String, registry: Registry = PILOT_REGISTRY): RecentItem
         "blocked" -> RecentItem(time, "Tried to open ${what.name}; it didn't come to the front · $who", refused = true)
         "failed" -> RecentItem(time, "Failed: ${what.name} · $who", refused = true)
         "not-implemented" -> RecentItem(time, "Not available yet: ${what.name} · $who", refused = true)
-        "dropped-stale" -> RecentItem(time, "Ignored an old command: ${what.name} · $who", refused = true)
+        // A stale line logs the message body, whatever it says: name it only when it's a real
+        // command, so a sender's text never shows as the owner screen's own words.
+        "dropped-stale" -> {
+            val ch = if (channel == "owner") Channel.OWNER else Channel.FAMILY
+            if (parseCommand(command, ch, registry) != null) RecentItem(time, "Ignored an old command: ${what.name} · $who", refused = true)
+            else RecentItem(time, "Ignored an old message · $who", refused = true)
+        }
         else -> null
     }
 }
