@@ -35,14 +35,20 @@ object BridgeLog {
     fun lastLines(ctx: Context, n: Int, maxBytes: Int = 256 * 1024): List<String> {
         val f = File(ctx.filesDir, FILE)
         if (!f.exists()) return emptyList()
-        java.io.RandomAccessFile(f, "r").use { raf ->
-            val len = raf.length()
-            val start = maxOf(0L, len - maxBytes)
-            raf.seek(start)
-            val bytes = ByteArray((len - start).toInt())
-            raf.readFully(bytes)
-            val lines = String(bytes, Charsets.UTF_8).split('\n').filter { it.isNotEmpty() }
-            return (if (start > 0) lines.drop(1) else lines).takeLast(n)
+        // Like append: a read error mustn't close the owner screen, the one place to look.
+        return try {
+            java.io.RandomAccessFile(f, "r").use { raf ->
+                val len = raf.length()
+                val start = maxOf(0L, len - maxBytes)
+                raf.seek(start)
+                val bytes = ByteArray((len - start).toInt())
+                raf.readFully(bytes)
+                val lines = String(bytes, Charsets.UTF_8).split('\n').filter { it.isNotEmpty() }
+                (if (start > 0) lines.drop(1) else lines).takeLast(n)
+            }
+        } catch (e: java.io.IOException) {
+            Log.w("MABridge", "couldn't read $FILE", e)
+            emptyList()
         }
     }
 }

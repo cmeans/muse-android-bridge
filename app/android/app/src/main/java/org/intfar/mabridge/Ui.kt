@@ -122,23 +122,23 @@ class Ui(private val ctx: Context) {
     fun weighted() = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
 
     /**
-     * Keeps a screen's content out from under the status and navigation bars. Android 15+
-     * draws apps targeting SDK 35+ edge to edge, so without this, scrolled content passes
-     * under the clock and the gesture bar.
+     * Keeps a screen's content out from under the status and navigation bars, and on a
+     * ScrollView, the focused field out from under the keyboard. Android 15+ draws apps
+     * targeting SDK 35+ edge to edge, so without this, scrolled content passes under the
+     * clock and the gesture bar, and nothing makes room for the keyboard.
      */
-    private fun scrollFocusAboveBottomPadding(scroll: android.widget.ScrollView) {
-        val focused = scroll.findFocus() ?: return
-        val r = android.graphics.Rect()
-        focused.getDrawingRect(r)
-        scroll.offsetDescendantRectToMyCoords(focused, r)
-        val visibleBottom = scroll.scrollY + scroll.height - scroll.paddingBottom
-        val needed = r.bottom + dp(16) - visibleBottom
-        if (needed > 0) scroll.smoothScrollBy(0, needed)
-    }
-
     fun keepClearOfSystemBars(view: View) {
         // Android 10 (minSdk 29) never draws an app edge to edge, and these insets APIs are 30+.
         if (android.os.Build.VERSION.SDK_INT < 30) return
+        if (view is android.widget.ScrollView) {
+            // Focus can move with the keyboard already up (its Next key, a tap on a field's
+            // visible edge), which dispatches no new insets, so follow focus changes too.
+            view.viewTreeObserver.addOnGlobalFocusChangeListener { _, now ->
+                if (now != null && view.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true) {
+                    view.post { scrollFocusAboveBottomPadding(view) }
+                }
+            }
+        }
         view.setOnApplyWindowInsetsListener { v, insets ->
             // ime(): edge to edge, the window no longer resizes for the keyboard, so the
             // bottom padding takes the larger of the navigation bar and the open keyboard,
@@ -148,7 +148,7 @@ class Ui(private val ctx: Context) {
                     android.view.WindowInsets.Type.ime()
             )
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            // Nothing pans the window either, so once the keyboard is up, scroll the focused
+            // On 35+ nothing pans the window either, so once the keyboard is up, scroll the focused
             // field above it after the new padding is laid out. ScrollView's own
             // requestRectangleOnScreen measures against its full height, ignoring the padding,
             // so it would think a field under the keyboard is already visible.
@@ -157,5 +157,16 @@ class Ui(private val ctx: Context) {
             }
             insets
         }
+    }
+
+    /** Scrolls [scroll] so its focused view sits above the bottom padding (the keyboard). */
+    private fun scrollFocusAboveBottomPadding(scroll: android.widget.ScrollView) {
+        val focused = scroll.findFocus() ?: return
+        val r = android.graphics.Rect()
+        focused.getDrawingRect(r)
+        scroll.offsetDescendantRectToMyCoords(focused, r)
+        val visibleBottom = scroll.scrollY + scroll.height - scroll.paddingBottom
+        val needed = r.bottom + dp(16) - visibleBottom
+        if (needed > 0) scroll.smoothScrollBy(0, needed)
     }
 }
