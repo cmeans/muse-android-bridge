@@ -126,6 +126,16 @@ class Ui(private val ctx: Context) {
      * draws apps targeting SDK 35+ edge to edge, so without this, scrolled content passes
      * under the clock and the gesture bar.
      */
+    private fun scrollFocusAboveBottomPadding(scroll: android.widget.ScrollView) {
+        val focused = scroll.findFocus() ?: return
+        val r = android.graphics.Rect()
+        focused.getDrawingRect(r)
+        scroll.offsetDescendantRectToMyCoords(focused, r)
+        val visibleBottom = scroll.scrollY + scroll.height - scroll.paddingBottom
+        val needed = r.bottom + dp(16) - visibleBottom
+        if (needed > 0) scroll.smoothScrollBy(0, needed)
+    }
+
     fun keepClearOfSystemBars(view: View) {
         // Android 10 (minSdk 29) never draws an app edge to edge, and these insets APIs are 30+.
         if (android.os.Build.VERSION.SDK_INT < 30) return
@@ -138,6 +148,13 @@ class Ui(private val ctx: Context) {
                     android.view.WindowInsets.Type.ime()
             )
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            // Nothing pans the window either, so once the keyboard is up, scroll the focused
+            // field above it after the new padding is laid out. ScrollView's own
+            // requestRectangleOnScreen measures against its full height, ignoring the padding,
+            // so it would think a field under the keyboard is already visible.
+            if (v is android.widget.ScrollView && insets.isVisible(android.view.WindowInsets.Type.ime())) {
+                v.post { scrollFocusAboveBottomPadding(v) }
+            }
             insets
         }
     }
