@@ -1,4 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- The owner screen's palette (light). values-night holds the dark one. -->
 <resources>
     <color name="bridge_blue">#1E6FD9</color>
+    <color name="screen_bg">#F4F6F9</color>
+    <color name="card_bg">#FFFFFF</color>
+    <color name="tile_bg">#F4F6F9</color>
+    <color name="text_main">#15202E</color>
+    <color name="text_muted">#4A5668</color>
+    <color name="card_border">#E1E5EB</color>
+    <color name="field_border">#C9D0DA</color>
+    <color name="link">#1E6FD9</color>
+    <color name="button_bg">#1E6FD9</color>
+    <color name="ok">#1B7F3B</color>
+    <color name="off">#6B7686</color>
+    <color name="stop">#C62828</color>
+    <color name="stop_card_bg">#FDECEC</color>
+    <color name="stop_card_border">#C62828</color>
+    <color name="stop_title">#7A1212</color>
+    <color name="stop_text">#7A1212</color>
+    <color name="warn_bg">#FFF4E0</color>
+    <color name="warn_border">#E8B04B</color>
+    <color name="warn_text">#5C3D00</color>
+    <color name="danger_text">#B3261E</color>
 </resources>

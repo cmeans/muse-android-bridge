@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Follows the system's dark mode: values-night overrides the parent and the bars. -->
+    <style name="BridgeTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/screen_bg</item>
+        <item name="android:statusBarColor">@color/screen_bg</item>
+        <item name="android:navigationBarColor">@color/screen_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:colorAccent">@color/bridge_blue</item>
+    </style>
+</resources>

@@ -12,7 +12,8 @@ val STOP_PREF_KEYS = setOf(PREF_STOP_ALL, PREF_STOP_FAMILY)
  */
 enum class StopButton(val label: String, val action: String, val prefKey: String, val switchName: String) {
     FAMILY("Stop family", "org.intfar.mabridge.STOP_FAMILY", PREF_STOP_FAMILY, "STOP family"),
-    ALL("Stop all", "org.intfar.mabridge.STOP_ALL", PREF_STOP_ALL, "STOP all");
+    // The label matches the owner screen's card; the log keeps the shorter "STOP all".
+    ALL("Stop everything", "org.intfar.mabridge.STOP_ALL", PREF_STOP_ALL, "STOP all");
 
     companion object {
         /** The button a service action came from, or null for any other action. */
@@ -22,7 +23,7 @@ enum class StopButton(val label: String, val action: String, val prefKey: String
 
 /**
  * What tapping a STOP button does, given the STOP state before the tap: turn on
- * [StopButton.prefKey], end a ring for Stop all, and log [logLine]. A tap on a switch that's
+ * [StopButton.prefKey], end a ring for Stop everything, and log [logLine]. A tap on a switch that's
  * already on (a stale notification) changes nothing and the log says so.
  */
 data class StopTap(val button: StopButton, val stopsRinging: Boolean, val logLine: String)
@@ -47,8 +48,9 @@ data class StatusNotification(val text: String, val buttons: List<StopButton>)
  * channels are on, and offers a button only for a channel that's still on. Switching a
  * channel back on is done in the app, never from the notification.
  */
-fun statusNotificationFor(stop: StopState): StatusNotification = when {
-    stop.all -> StatusNotification("All commands stopped. Tap to open.", emptyList())
-    stop.family -> StatusNotification("Listening for owner commands; family stopped. Tap to open.", listOf(StopButton.ALL))
-    else -> StatusNotification("Listening for owner and family commands. Tap to open.", listOf(StopButton.FAMILY, StopButton.ALL))
+fun statusNotificationFor(stop: StopState, host: String): StatusNotification = when {
+    stop.all -> StatusNotification("Everything stopped. Tap to open.", emptyList())
+    // The server is named, so a changed setup shows on the notification too.
+    stop.family -> StatusNotification("Listening for your Muse on $host; family stopped. Tap to open.", listOf(StopButton.ALL))
+    else -> StatusNotification("Listening for your Muse and family on $host. Tap to open.", listOf(StopButton.FAMILY, StopButton.ALL))
 }
