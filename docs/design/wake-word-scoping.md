@@ -234,8 +234,9 @@ said "Stop all commands" (owner screen) and "Stop all" (notification); PR #19 re
 both.
 
 The mic state needs its own words. "Listening" already means the ntfy connection: the
-status notification's text, and with PR #19 also the owner screen's headline
-("Listening for your Muse…"). This doc
+status notification's text ("Listening for owner and family commands"; with PR #19,
+"Listening for your Muse…"), and with PR #19 also the owner screen's headline
+("Listening"). This doc
 calls the mic state **Hey Muse: on / off / waiting for a tap** (the last after a
 reboot). The proof of concept's notification says "Listening for Hey Muse", which
 collides; it needs renaming before production.
