@@ -10,14 +10,21 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import org.intfar.mabridge.protocol.PREF_OWNER_STOPPED
 import android.widget.Toast
 
 /** Starting and stopping the bridge service from the owner and setup screens. */
 object BridgeControl {
-    /** Starts the service when setup is complete; returns what's still missing otherwise. */
+    /**
+     * The owner's Start bridge: starts the service when setup is complete, and clears
+     * [PREF_OWNER_STOPPED] so reboots start it again; returns what's still missing otherwise.
+     */
     fun start(ctx: Context): List<String> {
         val missing = Config.missingSetup(ctx)
-        if (missing.isEmpty()) ctx.startForegroundService(Intent(ctx, BridgeService::class.java))
+        if (missing.isEmpty()) {
+            Config.prefs(ctx).edit().putBoolean(PREF_OWNER_STOPPED, false).apply()
+            ctx.startForegroundService(Intent(ctx, BridgeService::class.java))
+        }
         return missing
     }
 
@@ -64,7 +71,20 @@ object BridgeControl {
 
     private const val PREF_ASKED_NOTIFICATIONS = "asked_notifications"
 
+    /**
+     * The owner's Stop bridge: stops the service and records [PREF_OWNER_STOPPED], so the
+     * bridge stays stopped through reboots and updates until the owner starts it again.
+     */
     fun stop(ctx: Context) {
+        val prefs = Config.prefs(ctx)
+        if (!prefs.getBoolean(PREF_OWNER_STOPPED, false)) {
+            prefs.edit().putBoolean(PREF_OWNER_STOPPED, true).apply()
+            BridgeLog.append(ctx, "Stop bridge tapped: stays stopped after a reboot until started again")
+        }
+        stopService(ctx)
+    }
+
+    private fun stopService(ctx: Context) {
         ctx.stopService(Intent(ctx, BridgeService::class.java))
     }
 
@@ -75,7 +95,7 @@ object BridgeControl {
      */
     fun restartIfRunning(ctx: Context) {
         if (!Config.prefs(ctx).getBoolean("service_running", false)) return
-        stop(ctx)
+        stopService(ctx) // not the owner's Stop bridge: the bridge starts again at once
         start(ctx)
     }
 }
