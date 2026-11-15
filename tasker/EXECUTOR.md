@@ -15,8 +15,8 @@
 > owner's phone configuration must be treated as frozen once delivered —
 > no design step may depend on the owner re-importing, updating, or
 > reconfiguring anything. This is also the strongest argument yet for
-> the native app on the owner's device: store install + self-update
-> beats helper-maintained Tasker XML, so the app-at-parity swap matters
+> the native app on the owner's device: store install (which updates itself; a sideloaded build
+> doesn't) beats helper-maintained Tasker XML, so the app-at-parity swap matters
 > most for the owner phase, not the pilot.
 
 Build interactively on the phone (Tasker's UI generates valid project XML;
