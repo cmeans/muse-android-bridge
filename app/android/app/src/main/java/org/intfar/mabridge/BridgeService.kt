@@ -27,6 +27,7 @@ import org.intfar.mabridge.protocol.Command
 import org.intfar.mabridge.protocol.Decision
 import org.intfar.mabridge.protocol.Gate
 import org.intfar.mabridge.protocol.PILOT_REGISTRY
+import org.intfar.mabridge.protocol.PROTOCOL_VERSION
 import org.intfar.mabridge.protocol.RateLimiter
 import org.intfar.mabridge.protocol.StaleReceipts
 import org.intfar.mabridge.protocol.Receipts
@@ -243,9 +244,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 log(d.log)
                 // A long outage can replay many cached messages: cap their receipts so the
                 // receipt for a fresh command isn't queued behind them all (§6).
-                if (stale.shouldSend(msg.timeSec)) ack(d.receipt)
+                if (stale.shouldSend(msg.timeSec)) ack(d.receipt, d.id)
             }
-            is Decision.Reject -> { flushBacklog(); log(d.log); ack(d.receipt) }
+            is Decision.Reject -> { flushBacklog(); log(d.log); ack(d.receipt, d.id) }
             is Decision.Run -> try {
                 flushBacklog()
                 // Monotonic: a wall-clock correction mustn't strand the limiter's times (§3).
@@ -254,16 +255,16 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                     // One receipt per channel and kind per window; a looping publisher's
                     // repeats are logged only, so they can't fill the receipt queue (§6).
                     val receipt = limiter.shouldReceiptRefusal(d.channel, d.command, now)
-                    if (receipt) ack(Receipts.rateLimited(d.command))
+                    if (receipt) ack(Receipts.rateLimited(d.command), msg.id)
                     log("rate-limited (${d.channel.name.lowercase()}): ${d.command.text}${if (receipt) "" else " (no receipt: one already sent this window)"}")
                     return
                 }
                 // Every command past STOP counts, whatever it then does (§3, §6).
                 limiter.record(d.channel, d.command, now)
-                run(d.command, d.channel)
+                run(d.command, d.channel, msg.id)
             } catch (e: Exception) {
                 // One failed action mustn't drop the subscription; it isn't retried (§5).
-                ack(Receipts.failed(d.command))
+                ack(Receipts.failed(d.command), msg.id)
                 log("failed (${d.channel.name.lowercase()}): ${d.command.text}: ${e.javaClass.simpleName}")
             }
         }
@@ -329,8 +330,11 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         return nm.areNotificationsEnabled() && ch != null && ch.importance != NotificationManager.IMPORTANCE_NONE
     }
 
-    /** Carries out a command that passed the gate and the rate limit, and posts its receipt. */
-    private fun run(command: Command, channel: Channel) {
+    /**
+     * Carries out a command that passed the gate and the rate limit, and posts its receipt,
+     * which names [id], the command message's id (0.4).
+     */
+    private fun run(command: Command, channel: Channel, id: String) {
         // The owner channel is the owner's own Muse: the announcement says so in their words.
         val who = askedBy(channel.name.lowercase())
         val name = channel.name.lowercase()
@@ -340,7 +344,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             val notInstalled = command is Command.Launch &&
                 packageManager.getLaunchIntentForPackage(PILOT_REGISTRY.apps.getValue(command.app).pkg) == null
             if (!notInstalled) {
-                ack(Receipts.cannotAnnounce(command))
+                ack(Receipts.cannotAnnounce(command), id)
                 log("cannot-announce ($name): ${command.text}: notifications are off")
                 return
             }
@@ -350,13 +354,13 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 val app = PILOT_REGISTRY.apps.getValue(command.app)
                 val intent = packageManager.getLaunchIntentForPackage(app.pkg)
                 if (intent == null) {
-                    ack(Receipts.notInstalled(command))
+                    ack(Receipts.notInstalled(command), id)
                     log("not-installed ($name): ${command.text}")
                     return
                 }
                 if (!Settings.canDrawOverlays(this)) {
                     // Android blocks activity starts from the background without it (#7).
-                    ack(Receipts.cannotLaunch(command))
+                    ack(Receipts.cannotLaunch(command), id)
                     log("cannot-launch ($name): ${command.text}: 'Display over other apps' is off")
                     return
                 }
@@ -366,15 +370,15 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 startActivity(intent)
                 when (reachedForeground(app.pkg, startedAt)) {
                     false -> {
-                        ack(Receipts.blocked(command))
+                        ack(Receipts.blocked(command), id)
                         log("blocked ($name): ${command.text}: didn't come to the front within ${FOREGROUND_CHECK_MS / 1000} s")
                     }
                     true -> {
-                        ack(Receipts.ok(command))
+                        ack(Receipts.ok(command), id)
                         log("ok ($name): ${command.text}")
                     }
                     null -> {
-                        ack(Receipts.ok(command))
+                        ack(Receipts.ok(command), id)
                         log("ok ($name): ${command.text} (unverified${if (hasUsageAccess()) "" else ": no usage access"})")
                     }
                 }
@@ -383,10 +387,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             Command.RingFind -> {
                 announce("Ringing so you can find the phone: asked by $who")
                 if (startRing(channel)) {
-                    ack(Receipts.ok(command))
+                    ack(Receipts.ok(command), id)
                     log("ok ($name): ${command.text}")
                 } else {
-                    ack(Receipts.failed(command))
+                    ack(Receipts.failed(command), id)
                     log("failed ($name): ${command.text}: no sound played")
                 }
             }
@@ -395,12 +399,12 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 val battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
                 // The wall clock, the one the freshness check reads (§2.3), not elapsedRealtime.
-                ack(Receipts.status(battery, version, PROTOCOL_VERSION, stopState(), launchCheck = hasUsageAccess(), nowMs = System.currentTimeMillis()))
+                ack(Receipts.status(battery, version, PROTOCOL_VERSION, stopState(), launchCheck = hasUsageAccess(), nowMs = System.currentTimeMillis()), id)
                 log("ok ($name): ${command.text}")
                 return
             }
             Command.BootstrapRustdesk, Command.UpdateRustdesk -> {
-                ack(Receipts.notImplemented(command))
+                ack(Receipts.notImplemented(command), id)
                 log("not-implemented ($name): ${command.text}")
                 return
             }
@@ -547,7 +551,12 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(RING_NOTIFICATION)
     }
 
-    private fun ack(text: String) {
+    /**
+     * Posts [body] with [id], the id of the command message it answers, appended (0.4): a
+     * required parameter, so no receipt can be sent without it. Log lines show the full text.
+     */
+    private fun ack(body: String, id: String) {
+        val text = Receipts.withId(body, id)
         if (acks.isShutdown) {
             // The service is stopping (e.g. during a launch check): say so, don't drop it silently.
             log("receipt not sent, bridge stopping: $text")
@@ -643,7 +652,6 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     }
 
     companion object {
-        const val PROTOCOL_VERSION = "0.3"
         const val LOG_FILE = BridgeLog.FILE
         private const val ACTION_STOP_RING = "org.intfar.mabridge.STOP_RING"
         private const val ACTION_REPOST_STATUS = "org.intfar.mabridge.REPOST_STATUS"
