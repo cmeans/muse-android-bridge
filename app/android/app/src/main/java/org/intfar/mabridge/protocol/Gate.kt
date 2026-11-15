@@ -9,9 +9,11 @@ data class StopState(val all: Boolean, val family: Boolean)
 /** What to do with a message. Receipts go to the ack topic; logs to the on-phone log. */
 sealed interface Decision {
     data class Ignore(val log: String) : Decision
-    data class DropStale(val receipt: String, val log: String) : Decision
+    /** [id]: the stale message's own id, so its receipt names it, not a later command (0.4). */
+    data class DropStale(val receipt: String, val id: String, val log: String) : Decision
     data class DropDuplicate(val log: String) : Decision
-    data class Reject(val receipt: String, val log: String = "") : Decision
+    /** [id]: the rejected message's id, for its receipt (0.4). */
+    data class Reject(val receipt: String, val id: String, val log: String = "") : Decision
     data class Run(val command: Command, val channel: Channel) : Decision
 }
 
@@ -31,7 +33,8 @@ class Gate(
 ) {
     fun decide(msg: IncomingMessage): Decision {
         val excerpt = logExcerpt(msg.body)
-        if (msg.id.isBlank()) return Decision.Ignore("ignored: no message id: $excerpt")
+        // 0.4 echoes the id in the receipt, so an id outside the grammar gets no receipt at all.
+        if (!isValidMessageId(msg.id)) return Decision.Ignore("ignored: bad message id: $excerpt")
         val channel = channelForTopic(msg.topic, slug)
             ?: return Decision.Ignore("ignored: topic ${logExcerpt(msg.topic)}: $excerpt")
         val name = channel.name.lowercase()
@@ -48,6 +51,7 @@ class Gate(
             val age = if (msg.timeSec <= nowSec) "${nowSec - msg.timeSec}s old" else "${msg.timeSec - nowSec}s ahead"
             return Decision.DropStale(
                 Receipts.staleOf(msg.body, channel, registry),
+                msg.id,
                 "dropped-stale ($name, $age): $excerpt",
             )
         }
@@ -56,11 +60,11 @@ class Gate(
         }
 
         val command = parseCommand(msg.body, channel, registry)
-            ?: return Decision.Reject(Receipts.unknown(), "unknown-command ($name): $excerpt")
+            ?: return Decision.Reject(Receipts.unknown(), msg.id, "unknown-command ($name): $excerpt")
 
         val s = stop()
         if (s.all || (channel == Channel.FAMILY && s.family)) {
-            return Decision.Reject(Receipts.disabled(command), "disabled ($name): ${command.text}")
+            return Decision.Reject(Receipts.disabled(command), msg.id, "disabled ($name): ${command.text}")
         }
         return Decision.Run(command, channel)
     }

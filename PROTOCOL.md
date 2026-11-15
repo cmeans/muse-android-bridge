@@ -1,6 +1,10 @@
 # muse-android-bridge — Wire Protocol
 
-**Version:** 0.3 (DRAFT, 2026-11-12). 0.3 adds the `cannot-launch`,
+**Version:** 0.4 (DRAFT, 2026-11-14). 0.4 adds the command's message id
+to every receipt (§6), so a publisher can match each receipt to its
+command exactly; the maintainer decided it on 2026-11-13 (mcp-phone-commands
+design Q1), reversing 0.3's no-ids rule; and the phone's clock to `status
+report` (`time=`, maintainer, 2026-11-14). 0.3 adds the `cannot-launch`,
 `blocked` and `rate-limited` receipts (§6), per-channel rate limits
 (§3, §5), a cap on `dropped-stale` receipts for a replayed backlog
 (§6), and `launch-check` in `status report`; the maintainer decided the
@@ -149,7 +153,9 @@ recorded in the executor config. The registry may differ per phone; the
 
 On receiving a message, an executor MUST:
 
-1. Check freshness and dedup (§2.3). Every message on a command topic is
+1. Check the message id: a message with no id, or an id outside §6's
+   grammar, is ignored and logged, with no receipt.
+   Check freshness and dedup (§2.3). Every message on a command topic is
    recorded as seen here, stale or not and before any later check, so a
    copy redelivered after a STOP is lifted, or after the phone's clock is
    corrected, cannot run, and a second copy gets no second receipt. A
@@ -178,24 +184,32 @@ act on messages from any topic other than the two command topics.
 
 ## 6. Receipts (`mab-<device>-ack`)
 
-Body format: `<result> <command>` with an optional short detail token. No
-receipt carries a message ID. The complete list:
+Body format: `<result> <command>`, an optional short detail token, then
+` id=<id>`. Every receipt ends with ` id=<id>`: the ntfy message id of the
+command message it answers, as ntfy delivered it (1 to 32 characters
+`[A-Za-z0-9]`; ntfy's are 12). A message whose id doesn't fit is ignored and
+logged, with no receipt. The complete list:
 
 ```
-ok <command>                       e.g. ok launch meet
-err <command> not-installed        launch only; nothing is announced
-err <command> disabled             channel off by STOP (§7)
-err <command> not-implemented      bootstrap rustdesk / update rustdesk until Phase 3
-err <command> cannot-announce      the phone can't show the announcement (§5.4), so nothing was done
-err <command> failed               the action couldn't run (e.g. no sound to ring); not retried
-err <command> cannot-launch        launch only; "Display over other apps" is off, so Android would block it; nothing was done
-err <command> blocked              launch only; announced and sent, but the app wasn't seen in front within 5 s; it may still appear (don't resend at once)
-err <command> rate-limited         over the channel's limit (§3): 3 ring find or 10 launches per 10 minutes; nothing was done
-err unknown-command                never echoes the body
-dropped-stale <command>            stale and a registry command on its channel
-dropped-stale                      stale and not a registry command
-ok status report battery=<n> version=<app version> protocol=<version> owner=<on|off> family=<on|off> launch-check=<on|off>
+ok <command> id=<id>                       e.g. ok launch meet id=Ab12Cd34Ef56
+err <command> not-installed id=<id>        launch only; nothing is announced
+err <command> disabled id=<id>             channel off by STOP (§7)
+err <command> not-implemented id=<id>      bootstrap rustdesk / update rustdesk until Phase 3
+err <command> cannot-announce id=<id>      the phone can't show the announcement (§5.4), so nothing was done
+err <command> failed id=<id>               the action couldn't run (e.g. no sound to ring); not retried
+err <command> cannot-launch id=<id>        launch only; "Display over other apps" is off, so Android would block it; nothing was done
+err <command> blocked id=<id>              launch only; announced and sent, but the app wasn't seen in front within 5 s; it may still appear (don't resend at once)
+err <command> rate-limited id=<id>         over the channel's limit (§3): 3 ring find or 10 launches per 10 minutes; nothing was done
+err unknown-command id=<id>                never echoes the body
+dropped-stale <command> id=<id>            stale and a registry command on its channel
+dropped-stale id=<id>                      stale and not a registry command
+ok status report battery=<n> version=<app version> protocol=<version> owner=<on|off> family=<on|off> launch-check=<on|off> time=<unix seconds> id=<id>
 ```
+
+`time` is the phone's own clock when it built the receipt, in whole Unix
+seconds, so a publisher can compare it with the receipt's ntfy time and
+warn about a phone clock that's off (§2.3's freshness check uses that
+clock).
 
 A duplicate gets no receipt, including a replayed copy of a message already
 handled that is now older than 120 s (its first receipt stands).
@@ -264,6 +278,11 @@ This document is versioned. Changes to the command registry or message
 format require a version bump here first; executors and publishers then
 update to match. Executors record the protocol version they implement and
 report it in `status report` receipts.
+
+0.4 is not compatible with 0.3 in either direction: a 0.3 parser rejects a
+receipt ending in `id=`, and a 0.4 parser rejects one without it. A
+publisher therefore records, per phone, which version that phone runs, and
+checks it against `status report`'s `protocol=`.
 
 ## 10. Open questions for the pilot (Phase 1)
 

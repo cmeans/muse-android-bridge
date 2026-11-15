@@ -12,7 +12,7 @@ Replace the Tasker pilot with one small Android app that implements
 - subscribe to the device's owner and family ntfy topics;
 - accept only exact registry commands;
 - apply the 120-second TTL, 24-hour message-ID dedup, exact registry
-  match and STOP gates, in that order (PROTOCOL v0.3 §5; the Tasker pilot
+  match and STOP gates, in that order (PROTOCOL v0.4 §5; the Tasker pilot
   checked STOP first);
 - announce every accepted action on the phone;
 - launch the target app, or perform `ring find`;

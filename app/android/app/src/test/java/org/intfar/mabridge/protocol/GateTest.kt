@@ -77,7 +77,7 @@ class GateTest {
 
     @Test fun staleNewMessageStillGetsStaleReceipt() {
         clock = t + 300_000
-        assertTrue(gate.decide(msg("launch meet", id = "never-seen", timeSec = nowSec)) is Decision.DropStale)
+        assertTrue(gate.decide(msg("launch meet", id = "neverSeen", timeSec = nowSec)) is Decision.DropStale)
     }
 
     @Test fun secondStaleCopyIsDuplicate() {
@@ -100,7 +100,7 @@ class GateTest {
 
     @Test fun stopFamilyRejectsFamily() {
         stop = StopState(all = false, family = true)
-        assertEquals(Decision.Reject("err launch meet disabled"), stripLog(gate.decide(msg("launch meet"))))
+        assertEquals(Decision.Reject("err launch meet disabled", "r1"), stripLog(gate.decide(msg("launch meet", id = "r1"))))
         assertEquals(
             Decision.Run(Command.Launch("meet"), Channel.OWNER),
             gate.decide(msg("launch meet", topic = owner)),
@@ -109,10 +109,10 @@ class GateTest {
 
     @Test fun stopAllRejectsBoth() {
         stop = StopState(all = true, family = false)
-        assertEquals(Decision.Reject("err launch meet disabled"), stripLog(gate.decide(msg("launch meet"))))
+        assertEquals(Decision.Reject("err launch meet disabled", "r2"), stripLog(gate.decide(msg("launch meet", id = "r2"))))
         assertEquals(
-            Decision.Reject("err status report disabled"),
-            stripLog(gate.decide(msg("status report", topic = owner))),
+            Decision.Reject("err status report disabled", "r3"),
+            stripLog(gate.decide(msg("status report", topic = owner, id = "r3"))),
         )
     }
 
@@ -130,7 +130,7 @@ class GateTest {
     }
 
     @Test fun ownerOnlyCommandOnFamilyIsUnknown() {
-        assertEquals(Decision.Reject("err unknown-command"), stripLog(gate.decide(msg("status report"))))
+        assertEquals(Decision.Reject("err unknown-command", "r4"), stripLog(gate.decide(msg("status report", id = "r4"))))
     }
 
     @Test fun wrongTopicIgnored() {
@@ -141,6 +141,23 @@ class GateTest {
     @Test fun blankIdIgnored() {
         assertTrue(gate.decide(msg("launch meet", id = "")) is Decision.Ignore)
         assertTrue(gate.decide(msg("launch meet", id = "   ")) is Decision.Ignore)
+    }
+
+    @Test fun idOutsideGrammarIgnored() {
+        listOf("ab cd", "ab=cd", "a".repeat(33), "abé").forEach {
+            assertTrue(it, gate.decide(msg("launch meet", topic = owner, id = it)) is Decision.Ignore)
+        }
+    }
+
+    @Test fun staleReceiptCarriesItsOwnId() {
+        val d = gate.decide(msg("launch meet", timeSec = nowSec - 121, id = "old1")) as Decision.DropStale
+        assertEquals("old1", d.id)
+        assertEquals("dropped-stale launch meet", d.receipt)
+    }
+
+    @Test fun rejectCarriesItsOwnId() {
+        val d = gate.decide(msg("launch meet xyzzy", id = "junk1")) as Decision.Reject
+        assertEquals("junk1", d.id)
     }
 
     @Test fun rustdeskNotImplemented() {
@@ -167,16 +184,16 @@ class GateTest {
 
     @Test fun statusReceipt() {
         assertEquals(
-            "ok status report battery=87 version=0.1.0 protocol=0.2 owner=on family=off launch-check=on",
-            Receipts.status(87, "0.1.0", "0.2", StopState(all = false, family = true), launchCheck = true),
+            "ok status report battery=87 version=0.1.0 protocol=0.4 owner=on family=off launch-check=on time=1800000000",
+            Receipts.status(87, "0.1.0", "0.4", StopState(all = false, family = true), launchCheck = true, nowMs = t),
         )
         assertEquals(
-            "ok status report battery=5 version=0.1.0 protocol=0.2 owner=off family=off launch-check=off",
-            Receipts.status(5, "0.1.0", "0.2", StopState(all = true, family = false), launchCheck = false),
+            "ok status report battery=5 version=0.1.0 protocol=0.4 owner=off family=off launch-check=off time=1800000000",
+            Receipts.status(5, "0.1.0", "0.4", StopState(all = true, family = false), launchCheck = false, nowMs = t),
         )
     }
 
     /** Reject with its log line dropped, to compare receipts alone. */
     private fun stripLog(d: Decision): Decision =
-        if (d is Decision.Reject) Decision.Reject(d.receipt) else d
+        if (d is Decision.Reject) Decision.Reject(d.receipt, d.id) else d
 }

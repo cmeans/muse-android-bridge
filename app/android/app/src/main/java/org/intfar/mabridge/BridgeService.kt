@@ -35,6 +35,7 @@ import org.intfar.mabridge.protocol.StopButton
 import org.intfar.mabridge.protocol.StopState
 import org.intfar.mabridge.protocol.askedBy
 import org.intfar.mabridge.protocol.hostOf
+import org.intfar.mabridge.protocol.isValidMessageId
 import org.intfar.mabridge.protocol.statusNotificationFor
 import org.intfar.mabridge.protocol.stopTapFor
 import org.intfar.mabridge.protocol.parseNtfyLine
@@ -233,7 +234,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             return
         }
         val msg = parseNtfyLine(line) ?: return // keepalive, or not a usable message
-        Config.prefs(this).edit().putString(PREF_LAST_ID, msg.id).apply()
+        // An id the gate ignores mustn't become the reconnect's since= (0.4 id grammar).
+        if (isValidMessageId(msg.id)) Config.prefs(this).edit().putString(PREF_LAST_ID, msg.id).apply()
         when (val d = gate.decide(msg)) {
             is Decision.Ignore -> log(d.log)
             is Decision.DropDuplicate -> log(d.log)
@@ -392,7 +394,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 val bm = getSystemService(BATTERY_SERVICE) as BatteryManager
                 val battery = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
                 val version = packageManager.getPackageInfo(packageName, 0).versionName ?: "?"
-                ack(Receipts.status(battery, version, PROTOCOL_VERSION, stopState(), launchCheck = hasUsageAccess()))
+                // The wall clock, the one the freshness check reads (§2.3), not elapsedRealtime.
+                ack(Receipts.status(battery, version, PROTOCOL_VERSION, stopState(), launchCheck = hasUsageAccess(), nowMs = System.currentTimeMillis()))
                 log("ok ($name): ${command.text}")
                 return
             }
