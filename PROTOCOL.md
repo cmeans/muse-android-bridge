@@ -153,8 +153,8 @@ recorded in the executor config. The registry may differ per phone; the
 
 On receiving a message, an executor MUST:
 
-1. Check the message id: a message with no id, or an id outside §6's
-   grammar, is ignored and logged, with no receipt.
+1. Check the message id: a message with no id is dropped; one whose id is
+   outside §6's grammar is ignored and logged. Neither gets a receipt.
    Check freshness and dedup (§2.3). Every message on a command topic is
    recorded as seen here, stale or not and before any later check, so a
    copy redelivered after a STOP is lifted, or after the phone's clock is

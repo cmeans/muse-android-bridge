@@ -37,6 +37,7 @@ import org.intfar.mabridge.protocol.StopState
 import org.intfar.mabridge.protocol.askedBy
 import org.intfar.mabridge.protocol.hostOf
 import org.intfar.mabridge.protocol.isValidMessageId
+import org.intfar.mabridge.protocol.sinceParam
 import org.intfar.mabridge.protocol.statusNotificationFor
 import org.intfar.mabridge.protocol.stopTapFor
 import org.intfar.mabridge.protocol.parseNtfyLine
@@ -45,7 +46,6 @@ import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -178,8 +178,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 // Catch up from the last message seen, so a command sent during a
                 // reconnect gap still arrives; the gate drops anything stale (120 s)
                 // or already seen. With no message seen yet, look back 2 minutes.
-                val since = Config.prefs(this).getString(PREF_LAST_ID, null)
-                    ?.let { URLEncoder.encode(it, "UTF-8") } ?: "2m"
+                // sinceParam passes only a 12-character [A-Za-z0-9] id, so nothing needs encoding.
+                val since = sinceParam(Config.prefs(this).getString(PREF_LAST_ID, null))
                 c = URL("${Config.server(this)}/$topics/json?since=$since").openConnection() as HttpURLConnection
                 conn = c
                 c.setRequestProperty("Authorization", basicAuth())

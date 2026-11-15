@@ -10,6 +10,18 @@ const val MAX_MESSAGE_ID_LENGTH = 32
 fun isValidMessageId(id: String): Boolean =
     id.length in 1..MAX_MESSAGE_ID_LENGTH && id.all { it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' }
 
+/** ntfy's own message ids are exactly this long; its `since=` reads any other length as a time or duration. */
+const val NTFY_MESSAGE_ID_LENGTH = 12
+
+/**
+ * The reconnect's `since=`: the last message id seen, only when ntfy will read it as an id
+ * (valid and exactly [NTFY_MESSAGE_ID_LENGTH] characters), else a 2-minute look-back. A stored
+ * value from an older build, or a short all-digit id ntfy would take as a Unix time, can't
+ * replay the cache or get every reconnect refused.
+ */
+fun sinceParam(lastId: String?): String =
+    lastId?.takeIf { isValidMessageId(it) && it.length == NTFY_MESSAGE_ID_LENGTH } ?: "2m"
+
 /**
  * Receipt bodies for the ack topic, exactly as listed in PROTOCOL.md §6 (0.4: each ends with
  * `id=`, added by [withId]).

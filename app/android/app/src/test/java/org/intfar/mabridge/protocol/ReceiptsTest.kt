@@ -34,6 +34,14 @@ class ReceiptsTest {
         assertThrows(IllegalArgumentException::class.java) { Receipts.withId("ok ring find", "ab cd") }
     }
 
+    @Test fun sinceUsesOnlyARealNtfyId() {
+        assertEquals("Ab12Cd34Ef56", sinceParam("Ab12Cd34Ef56"))
+        // no id yet; an older build's stored value; ids ntfy would read as a time or duration
+        listOf(null, "never-seen", "1", "1800000000", "2m", "a".repeat(13), "Ab12Cd34Ef5").forEach {
+            assertEquals(it.toString(), "2m", sinceParam(it))
+        }
+    }
+
     @Test fun longestStatusReceiptFits() {
         // a 12-digit time: the server's pattern allows up to 12 digits
         val r = Receipts.withId(
