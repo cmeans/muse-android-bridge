@@ -6,6 +6,7 @@ import android.content.Intent
 import org.intfar.mabridge.protocol.BootEvent
 import org.intfar.mabridge.protocol.PREF_OWNER_STOPPED
 import org.intfar.mabridge.protocol.bootStartFor
+import org.intfar.mabridge.protocol.ownerStoppedFrom
 
 /**
  * Restarts the bridge after a reboot, and after the app is updated if it was running then,
@@ -23,7 +24,7 @@ class BootReceiver : BroadcastReceiver() {
         val decision = bootStartFor(
             event,
             setupComplete = Config.missingSetup(context).isEmpty(),
-            ownerStopped = if (prefs.contains(PREF_OWNER_STOPPED)) prefs.getBoolean(PREF_OWNER_STOPPED, false) else null,
+            ownerStopped = ownerStoppedFrom(prefs.contains(PREF_OWNER_STOPPED), prefs.getBoolean(PREF_OWNER_STOPPED, false)),
             wasRunning = prefs.getBoolean("service_running", false),
         )
         if (decision.markOwnerStopped) prefs.edit().putBoolean(PREF_OWNER_STOPPED, true).apply()

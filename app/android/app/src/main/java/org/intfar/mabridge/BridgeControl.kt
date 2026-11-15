@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import org.intfar.mabridge.protocol.LOG_STOP_TAPPED
 import org.intfar.mabridge.protocol.PREF_OWNER_STOPPED
 import android.widget.Toast
 
@@ -76,11 +77,8 @@ object BridgeControl {
      * bridge stays stopped through reboots and updates until the owner starts it again.
      */
     fun stop(ctx: Context) {
-        val prefs = Config.prefs(ctx)
-        if (!prefs.getBoolean(PREF_OWNER_STOPPED, false)) {
-            prefs.edit().putBoolean(PREF_OWNER_STOPPED, true).apply()
-            BridgeLog.append(ctx, "Stop bridge tapped: stays stopped after a reboot until started again")
-        }
+        Config.prefs(ctx).edit().putBoolean(PREF_OWNER_STOPPED, true).apply()
+        BridgeLog.append(ctx, LOG_STOP_TAPPED)
         stopService(ctx)
     }
 
