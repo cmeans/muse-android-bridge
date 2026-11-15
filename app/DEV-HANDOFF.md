@@ -14,7 +14,8 @@ Replace the Tasker pilot with one small Android app that implements
 - apply the 120-second TTL, 24-hour message-ID dedup, exact registry
   match and STOP gates, in that order (PROTOCOL v0.4 §5; the Tasker pilot
   checked STOP first);
-- announce every accepted action on the phone;
+- announce every accepted action that changes something on the phone
+  (`status report` isn't announced, PROTOCOL §5 step 4);
 - launch the target app, or perform `ring find`;
 - post a receipt to the ack topic and keep a local log;
 - restart after reboot and expose a simple owner screen with setup,
