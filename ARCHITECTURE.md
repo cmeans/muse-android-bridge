@@ -105,14 +105,18 @@ revoked independently by removing that controller's ID from the whitelist.
    an ad page — no screen control needed yet.
 3. If a settings change on the phone is required and they can't be talked
    through it reliably, their Muse asks the bridge (owner channel) to
-   `launch rustdesk`, and tells them: "Tap Start service, then Start now —
-   two green buttons. Then I'll take over."
-4. The owner taps Start service; RustDesk shows its own scam warning with a
-   short countdown, and then Android asks to allow screen capture, where they
-   tap Start now. The rule, which the drill
-   teaches (TEST-PLAN E3): do this only after they asked for help themselves (their own Muse, or a family
-   member they reached on a number or app they already had for them), never
-   because a call, message or pop-up asks them to.
+   `launch rustdesk`, and walks them through starting the service, one step
+   at a time ("Then I'll take over").
+4. The owner taps Start service. RustDesk shows its own scam warning with a
+   short countdown, which they agree to once it ends; then Android asks to
+   share the screen, and they choose the entire screen (not one app) and
+   confirm. The exact labels depend on the Android and RustDesk versions:
+   TEST-PLAN C2 records the tap list on the phone. Never tick RustDesk's
+   "Don't show again" and don't sign RustDesk into an account: either one
+   hides that warning. The rule, which the drill teaches (TEST-PLAN E3): do
+   this only after they asked for help themselves (their own Muse, or a
+   family member they reached on a number or app they already had for
+   them), never because a call, message or pop-up asks them to.
 5. Their Muse's controller connects through the family RustDesk server to
    their phone (its ID is whitelisted; the device password is held by the
    controller, never by the owner). Muse now sees the screen and can tap/type.

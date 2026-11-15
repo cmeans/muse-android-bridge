@@ -35,7 +35,7 @@ touched until every Phase 1–3 item that bears on it has a recorded result.
 | # | Unknown | Test | Pass looks like |
 |---|---|---|---|
 | C1 | Hole-punch vs relay from real networks | Connect controller → pilot phone on home WiFi, on mobile data, and on a third-party WiFi | Session establishes in all three; direct-vs-relay path recorded per case |
-| C2 | The owner's per-session tap count, cold | Kill RustDesk, reboot phone, start a session from scratch, count required human taps (incl. after service kill) | Exact tap list written into the runbook; nothing beyond Start service / Start now + any one-time grants |
+| C2 | The owner's per-session tap count, cold | Kill RustDesk, reboot phone, start a session from scratch, count required human taps (incl. after service kill); record the Android and RustDesk versions | Exact tap list, with each screen's labels, written into the runbook; nothing beyond Start service, RustDesk's warning and Android's share-the-entire-screen consent + any one-time grants |
 | C3 | Accessibility/input persistence | Reboot; check Input Control accessibility state | Survives reboot, or the re-enable steps are in the runbook |
 | C4 | Sideload reality on the target Android version | Install official RustDesk build on pilot phone; note Play Protect behavior and the restricted-settings flow step by step | Full step list recorded; no undocumented surprise left for the in-person setup session |
 | C5 | Whitelist semantics | Two controller IDs whitelisted; connect from both; remove one; retry | Both work; removed ID refused before password prompt; re-adding restores |
