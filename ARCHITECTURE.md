@@ -89,7 +89,7 @@ only in **who operates** and **which controller** connects:
 | Bridge channel used | Family (launch-only) | Owner (full menu) |
 | Controller | An LXC on the server operator's home server (for the server operator's Muse) or the helper's own laptop (human driving) | The owner's Muse's own environment |
 | Works from | Anywhere with internet — the server and the server operator's controller live at the server operator's home and are always on; the *helpers* do not need to be home | Anywhere the owner is |
-| Phone-side requirement | The owner starts the RustDesk service when asked | The owner starts the RustDesk service when their Muse asks |
+| Phone-side requirement | The owner starts the RustDesk service only after asking that helper for help themselves | The owner starts the RustDesk service only after asking their own Muse for help |
 
 For both paths to exist, the owner's phone whitelists **both** controller
 IDs (their Muse's and the server operator's) — one phone configuration,
@@ -107,9 +107,10 @@ revoked independently by removing that controller's ID from the whitelist.
    through it reliably, their Muse asks the bridge (owner channel) to
    `launch rustdesk`, and tells them: "Tap Start service, then Start now —
    two green buttons. Then I'll take over."
-4. The owner taps Start service (past the standard scam-warning countdown —
-   a screen they have been *taught in advance* to expect only when their
-   Muse asks) and Start now.
+4. The owner taps Start service and Start now. Android shows its standard
+   warning screen first. The owner does this only because they asked for
+   help themselves (step 1), never because a call, message or pop-up asks
+   them to; the drill teaches that rule (TEST-PLAN E3).
 5. Their Muse's controller connects through the family RustDesk server to
    their phone (its ID is whitelisted; the device password is held by the
    controller, never by the owner). Muse now sees the screen and can tap/type.

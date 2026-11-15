@@ -35,8 +35,9 @@ Non-goals:
 - No general-purpose command execution. A trigger can never become code.
 - No unlocking the phone. A launched app is usable only if the phone is
   unlocked or is unlocked by its owner.
-- No silent operation. Every executed command is announced on the phone and
-  logged on the phone.
+- No silent operation. Every executed command that changes something on
+  the phone is announced on it, and every command is logged on it.
+  `status report` only reads and replies, so it isn't announced (§5 step 4).
 
 ## 2. Transport
 
@@ -175,6 +176,7 @@ On receiving a message, an executor MUST:
    must always be able to tell, afterwards, who asked for what.
    The owner channel is announced as "your Muse" ("Opening Meet: asked by
    your Muse"), since that's who the owner's channel speaks for.
+   `status report` skips this step: it changes nothing on the phone.
 5. Perform the action.
 6. Append to the on-phone log: timestamp, channel, command, result.
 7. Publish a receipt (§6).

@@ -10,7 +10,7 @@
 > Correct — and by design the owner never sees any of it. Everything in this sheet is
 > helper-side work, done by a family helper, ideally in one in-person
 > setup visit. The owner's entire surface is: open Muse, ask for help,
-> tap Start service / Start now when their Muse asks, and the STOP
+> tap Start service / Start now after asking their Muse for help, and the STOP
 > scenes. No imports, no settings, no Tasker UI, ever. Corollary: the
 > owner's phone configuration must be treated as frozen once delivered —
 > no design step may depend on the owner re-importing, updating, or

@@ -58,7 +58,7 @@ touched until every Phase 1–3 item that bears on it has a recorded result.
 |---|---|---|---|
 | E1 | How does the owner's Muse publish owner-channel commands? | Mechanism + credential storage in their Muse's environment; fire the full registry | Works with credentials never touching the phone or the owner |
 | E2 | Voice + control simultaneously | Voice conversation with their Muse open while a control session runs on the same phone | Narration usable; audio routing sane; if not, narration moves to before/after summaries (open decision §7.3) |
-| E3 | Drill effectiveness | Teach the Start-service sequence incl. the scam-warning countdown; test cold a week later | They perform it unaided and can state the rule: only when their Muse asks, never for a caller |
+| E3 | Drill effectiveness | Teach the Start-service sequence, warning screen included; test cold a week later | They perform it unaided and can state the rule: only after they asked for help themselves (their own Muse, or a family member they contacted), never because someone calls, messages or asks first |
 | E4 | Fake-alarm end-to-end (the motivating case) | Plant a Chrome site-notification alarm; owner asks their Muse to fix it; nobody helps | Fixed via the §4 session flow; time and tap count recorded |
 
 ## F. Security drills — before Phase 4 completes
