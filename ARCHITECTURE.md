@@ -107,8 +107,9 @@ revoked independently by removing that controller's ID from the whitelist.
    through it reliably, their Muse asks the bridge (owner channel) to
    `launch rustdesk`, and tells them: "Tap Start service, then Start now —
    two green buttons. Then I'll take over."
-4. The owner taps Start service (Android shows its standard warning screen,
-   with a short countdown) and then Start now. The rule, which the drill
+4. The owner taps Start service; RustDesk shows its own scam warning with a
+   short countdown, and then Android asks to allow screen capture, where they
+   tap Start now. The rule, which the drill
    teaches (TEST-PLAN E3): do this only after they asked for help themselves (their own Muse, or a family
    member they reached on a number or app they already had for them), never
    because a call, message or pop-up asks them to.
@@ -143,9 +144,9 @@ bootstrap (human completes protected prompts).
 - Tapping through Play Protect or system security warnings. If one appears,
   the agent stops and the human decides. (This is also the anti-scam
   invariant: the owner is taught that *no one*, including their Muse, ever
-  asks them to override those screens remotely. The one prompt the owner
-  goes past is RustDesk's own Start service screen, and only under the
-  owner-initiated rule in §4 step 4.)
+  asks them to override those screens remotely. The prompts the owner goes
+  past are RustDesk's own Start service warning and Android's screen-capture
+  consent, and only under the owner-initiated rule in §4 step 4.)
 - Anything on a screen Android marks secure (FLAG_SECURE — banking and
   similar apps render black to the controller; the agent literally cannot
   see them, which is the correct outcome).
