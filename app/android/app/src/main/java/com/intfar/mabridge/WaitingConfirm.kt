@@ -22,8 +22,11 @@ object WaitingConfirm {
         return PendingConfirm(id, prefs.getString(PREF_MEMBER, null) ?: "", prefs.getLong(PREF_DEADLINE, 0L))
     }
 
-    // commit, not apply: a request stored but lost, or cleared but kept, by a crash would
-    // break exactly one receipt per message.
+    // commit, not apply: a request cleared but kept by a crash would be answered again at the
+    // next start (a second receipt), and one stored but lost would get no receipt. Commit gives
+    // at most one receipt per message under a crash, not exactly one: the receipt is queued
+    // after the clear commits and sent later (ack is asynchronous, and commit's result isn't
+    // checked), so a process death in between leaves the message with none.
     @android.annotation.SuppressLint("ApplySharedPref") // on purpose, see above
     fun store(ctx: Context, p: PendingConfirm) {
         Config.prefs(ctx).edit()

@@ -41,8 +41,10 @@ fun stopTapFor(action: String?, before: StopState): StopTap? {
 }
 
 /**
- * What the status notification says and which STOP buttons it offers. [publicText] is the
- * version a lock screen that hides sensitive content shows: it names no member.
+ * What the status notification says and which STOP buttons it offers. [publicText] names no
+ * member. The notification is public, so a lock screen shows [publicText] only when the owner
+ * hides sensitive content for its channel; the phone-wide setting alone still shows [text] in
+ * full, names included.
  */
 data class StatusNotification(val text: String, val buttons: List<StopButton>, val publicText: String = text)
 
