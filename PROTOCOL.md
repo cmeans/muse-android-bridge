@@ -296,6 +296,9 @@ dropped-stale id=<id>                      stale and not a registry command
 ok status report battery=<n> version=<app version> protocol=<version> owner=<on|off> family=<on|off> launch-check=<on|off> time=<unix seconds> id=<id>
 ```
 
+`version` is the bridge app's own build version (`versionName`, e.g. `0.3.0`);
+it is numbered separately from `protocol`, the version of this document.
+
 `time` is the phone's own clock when it built the receipt, in whole Unix
 seconds, so a publisher can compare it with the receipt's ntfy time and
 warn about a phone clock that's off (§2.3's freshness check uses that
