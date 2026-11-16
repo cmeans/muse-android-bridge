@@ -54,12 +54,14 @@ private fun memberSlugProblem(member: String, device: String): String? {
 
 /**
  * A display name: letters of any script, combining marks, spaces, hyphens and apostrophes, with
- * at least one letter and at most [MAX_MEMBER_NAME_LENGTH] code points after NFC normalization.
- * A zero-width joiner or non-joiner is allowed only between a letter or mark and a letter; every
- * other default-ignorable code point is refused, letters and marks included (the Hangul fillers
- * such as U+3164 are letters with no glyph), so a name can't be blank on screen or dodge the
- * duplicate check with an invisible character. The app's own words for a sender
- * ([isAppWording]) are refused too. It takes the raw name and normalizes it itself.
+ * at least one letter and at most [MAX_MEMBER_NAME_LENGTH] code points after NFC normalization,
+ * with no space at either end and no two spaces in a row. A zero-width joiner or non-joiner is
+ * allowed only between a letter or mark and a letter; every other default-ignorable code point is
+ * refused, letters and marks included (the Hangul fillers such as U+3164 are letters with no
+ * glyph), so a name can't be blank on screen. A joiner can still sit between two Latin letters,
+ * where it draws nothing, so names are compared on [nameKey], which drops it: the app's own words
+ * for a sender ([isAppWording]) are refused on that key, and [memberProblems] and [decodeMembers]
+ * find repeats on it. It takes the raw name and normalizes it itself.
  */
 fun isValidMemberName(name: String): Boolean {
     val normalized = normalizeName(name)
@@ -67,6 +69,7 @@ fun isValidMemberName(name: String): Boolean {
     val cps = normalized.codePoints().toArray()
     if (cps.isEmpty() || cps.size > MAX_MEMBER_NAME_LENGTH) return false
     if (cps.first() == ' '.code || cps.last() == ' '.code) return false
+    if ((1 until cps.size).any { cps[it] == ' '.code && cps[it - 1] == ' '.code }) return false
     var hasLetter = false
     var prevLetterOrMark = false
     for ((i, cp) in cps.withIndex()) {
@@ -93,12 +96,29 @@ fun isValidMemberName(name: String): Boolean {
 /**
  * The words the app itself uses for a sender: "your Muse" (the owner channel), and "family" and
  * "a family member" (its fallbacks). A member with one of them as a name would read as that
- * sender ("Opening Meet: asked by your Muse"). Compared on the NFC-normalized [name], ignoring
- * case code point by code point, never with the default locale's lowercase.
+ * sender ("Opening Meet: asked by your Muse"). Compared on [nameKey], so a joiner or a doubled
+ * space inside the words doesn't get past.
  */
-private fun isAppWording(name: String): Boolean = APP_WORDING.any { it.equals(name, ignoreCase = true) }
+private fun isAppWording(name: String): Boolean = nameKey(name) in APP_WORDING_KEYS
 
-private val APP_WORDING = listOf("your Muse", "family", "a family member")
+// Before APP_WORDING_KEYS: top-level values are set in file order, and that one uses nameKey.
+private val WHITESPACE_RUN = Regex("\\s+")
+
+private val APP_WORDING_KEYS = setOf("your Muse", "family", "a family member").map { nameKey(it) }.toSet()
+
+/**
+ * The form two names are compared on: NFC, zero-width joiners and non-joiners removed, each run
+ * of whitespace one space, ends trimmed, and case folded code point by code point
+ * (`Character.toLowerCase(Character.toUpperCase(cp))`), never with the default locale, so a
+ * Turkish phone compares "ALI" and "ali" as the same name. Two names with one key read the same.
+ */
+internal fun nameKey(name: String): String {
+    val noJoiners = normalizeName(name).filter { it.code != ZWNJ && it.code != ZWJ }
+    val spaced = normalizeName(noJoiners).trim().replace(WHITESPACE_RUN, " ")
+    val sb = StringBuilder(spaced.length)
+    spaced.codePoints().forEach { sb.appendCodePoint(Character.toLowerCase(Character.toUpperCase(it))) }
+    return sb.toString()
+}
 
 /**
  * Unicode's Default_Ignorable_Code_Point property (DerivedCoreProperties.txt): code points that
@@ -115,14 +135,13 @@ private val DEFAULT_IGNORABLE = listOf(
 
 /**
  * Why the list can't be saved, in words for the owner: empty when it can. Each bad member id, bad
- * name or repeat yields one problem that says what to fix; names are compared ignoring case after
- * NFC normalization.
+ * name or repeat yields one problem that says what to fix; names are compared on [nameKey].
  */
 fun memberProblems(members: List<FamilyMember>, device: String): List<String> {
     val problems = mutableListOf<String>()
     if (members.size > MAX_MEMBERS) problems += "At most $MAX_MEMBERS family members."
     val slugs = mutableSetOf<String>()
-    val names = mutableListOf<String>()
+    val nameKeys = mutableSetOf<String>()
     for (m in members) {
         val slugProblem = memberSlugProblem(m.slug, device)
         if (slugProblem != null) {
@@ -130,17 +149,15 @@ fun memberProblems(members: List<FamilyMember>, device: String): List<String> {
         } else if (!slugs.add(m.slug)) {
             problems += "The member id \"${m.slug}\" is used twice."
         }
-        if (isAppWording(normalizeName(m.name))) {
+        if (isAppWording(m.name)) {
             problems += "\"${m.name}\" can't be a member's name: the phone uses it for your Muse or the family as a whole."
         } else if (!isValidMemberName(m.name)) {
             problems += "\"${m.name}\" is not a usable name (letters, spaces, hyphens and apostrophes; up to " +
                 "$MAX_MEMBER_NAME_LENGTH characters)."
         } else {
-            val n = normalizeName(m.name)
-            if (names.any { it.equals(n, ignoreCase = true) }) {
-                problems += "The name \"$n\" is used twice."
+            if (!nameKeys.add(nameKey(m.name))) {
+                problems += "The name \"${normalizeName(m.name)}\" is used twice."
             }
-            names += n
         }
     }
     return problems
@@ -152,11 +169,13 @@ fun encodeMembers(members: List<FamilyMember>): String =
 
 /**
  * The members in [stored]. A line is kept only when it has exactly two fields, a valid slug for
- * [device], a valid name and a slug not seen before; at most [MAX_MEMBERS] are kept. So a bad
- * stored value can't add a topic. Names come back NFC-normalized.
+ * [device], a valid name, and a slug and a name ([nameKey]) not seen before; at most
+ * [MAX_MEMBERS] are kept. So a bad stored value can't add a topic, or a second member who reads
+ * as the first. Names come back NFC-normalized.
  */
 fun decodeMembers(stored: String, device: String): List<FamilyMember> {
     val out = mutableListOf<FamilyMember>()
+    val nameKeys = mutableSetOf<String>()
     for (line in stored.split('\n')) {
         if (out.size >= MAX_MEMBERS) break
         val fields = line.split('\t')
@@ -164,6 +183,7 @@ fun decodeMembers(stored: String, device: String): List<FamilyMember> {
         val (slug, name) = fields
         if (!isValidMemberSlug(slug, device) || !isValidMemberName(name)) continue
         if (out.any { it.slug == slug }) continue
+        if (!nameKeys.add(nameKey(name))) continue
         out += FamilyMember(slug, normalizeName(name))
     }
     return out

@@ -106,7 +106,7 @@ class FamilyMembersTest {
     }
 
     @Test fun decodeStopsAtMax() {
-        val stored = (1..9).joinToString("\n") { "m$it\tName" }
+        val stored = (1..9).joinToString("\n") { "m$it\tN" + "x".repeat(it) }
         assertEquals((1..8).map { "m$it" }, decodeMembers(stored, "p").map { it.slug })
     }
     @Test fun namesThatReadAsAnotherSenderAreRefused() {
@@ -162,6 +162,60 @@ class FamilyMembersTest {
         // The joiners are default-ignorable too, but keep their own rule.
         assertTrue(isValidMemberName("مری\u200Cم"))
         assertTrue(isValidMemberName("आचार्\u200Dय"))
+    }
+
+    // QA r1: names are compared on a key (NFC, joiners removed, spaces collapsed, case folded),
+    // so an invisible joiner or a doubled space can't dodge the app-wording or duplicate checks.
+    @Test fun joinerOrDoubledSpaceCannotDodgeAppWording() {
+        for (n in listOf("yo‍ur Muse", "fam‌ily", "a fam‍ily member", "your  Muse", "YOUR‌ MUSE")) {
+            assertFalse(n, isValidMemberName(n))
+        }
+    }
+
+    @Test fun doubledSpaceIsRefused() {
+        assertFalse(isValidMemberName("Mary  Ann"))
+        assertTrue(isValidMemberName("Mary Ann"))
+    }
+
+    @Test fun joinerCannotDodgeTheDuplicateCheck() {
+        val problems = memberProblems(listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "Al‍ex")), device)
+        assertEquals(1, problems.size)
+        assertTrue(problems[0], problems[0].contains("used twice"))
+        assertEquals(1, memberProblems(listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "AL‌EX")), device).size)
+    }
+
+    @Test fun joinerAppWordingProblemSaysWhy() {
+        val problem = memberProblems(listOf(FamilyMember("m1", "yo‍ur Muse")), device).single()
+        assertTrue(problem, problem.contains("the phone uses it for your Muse"))
+    }
+
+    @Test fun keyComparisonIsLocaleIndependent() {
+        // Turkish lowercase of "I" is "ı": the key must not use the default locale.
+        val saved = java.util.Locale.getDefault()
+        java.util.Locale.setDefault(java.util.Locale.forLanguageTag("tr"))
+        try {
+            assertFalse(isValidMemberName("FAM‌ILY"))
+            assertEquals(1, memberProblems(listOf(FamilyMember("m1", "ALI"), FamilyMember("m2", "a‍li")), device).size)
+        } finally {
+            java.util.Locale.setDefault(saved)
+        }
+    }
+
+    @Test fun acceptedNamesStillAccepted() {
+        val good = listOf(
+            "مری‌م", // Persian with a ZWNJ
+            "आचार्‍य", // Devanagari, a ZWJ after a virama
+            "José", "José", "Mary Ann", "O'Neil", "O’Neil", "Jean-Luc",
+        )
+        for (n in good) assertTrue(n, isValidMemberName(n))
+        // All distinct except the two forms of José, which are one name.
+        val distinct = good.filter { it != "José" }.mapIndexed { i, n -> FamilyMember("m${i + 1}", n) }
+        assertTrue(memberProblems(distinct, device).isEmpty())
+    }
+
+    @Test fun decodeDropsRepeatedNameKey() {
+        val stored = "m1\tAlex\nm2\tAl‍ex\nm3\talex\nm4\tBo"
+        assertEquals(listOf(FamilyMember("m1", "Alex"), FamilyMember("m4", "Bo")), decodeMembers(stored, device))
     }
 
     @Test fun memberIdProblemsSayWhy() {
