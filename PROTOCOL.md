@@ -250,20 +250,24 @@ c. Open runs the usual launch path (the three refusals again, since any can
 d. Only one request waits at a time. A second family `launch rustdesk` while
    one is pending gets `pending` and no second prompt. STOP (family or all)
    while one is pending withdraws it and answers `disabled`; so does an Open
-   tapped while STOP is on. Past the deadline, STOP answers `not-confirmed`
-   like a late tap (c).
+   tapped while STOP is on, and a STOP switched on while a request is being
+   checked: it answers `disabled`, and any prompt already posted is withdrawn.
+   Past the deadline, STOP answers `not-confirmed` like a late tap (c).
 e. The pending request is kept across a restart: the next start withdraws it
    and answers `not-confirmed`. A setup save that changes the server or the
    device name withdraws it at once instead, before the new setup is written,
    and answers `not-confirmed` on the old server and ack topic. That receipt
    is sent once: if the send fails (no network, or the old server refuses
-   it), it is lost and the phone logs `receipt failed`; if the app is killed before it goes, it is lost
-   with no trace beyond the `not-confirmed … (setup changed)` line. Any other
+   it), it is lost and the phone logs `receipt failed (old server <host>,
+   mab-<old device>-ack): …`; once sent, the phone logs `receipt sent (setup
+   changed)`. If the app is killed before it goes, it is lost with no trace
+   beyond the `not-confirmed … (setup changed)` line. Any other
    setup save restarts a running bridge, which answers a waiting request with
    `not-confirmed` then, on the unchanged server; a stopped bridge answers it
    at its next start.
 
-There is exactly one receipt per message, sent when the outcome is known (§6).
+There is at most one receipt per message, sent when the outcome is known (§6);
+a send that fails, or a kill before it goes, leaves none (e).
 
 ## 6. Receipts (`mab-<device>-ack`)
 

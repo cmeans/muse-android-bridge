@@ -1,8 +1,10 @@
 package com.intfar.mabridge
 
 import android.content.Context
-import android.util.Base64
+import com.intfar.mabridge.protocol.CREDENTIAL_UNREADABLE
 import com.intfar.mabridge.protocol.PendingConfirm
+import com.intfar.mabridge.protocol.basicAuthHeader
+import com.intfar.mabridge.protocol.hostOf
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -22,8 +24,11 @@ object WaitingConfirm {
         return PendingConfirm(id, prefs.getString(PREF_MEMBER, null) ?: "", prefs.getLong(PREF_DEADLINE, 0L))
     }
 
-    // commit, not apply: a request stored but lost, or cleared but kept, by a crash would
-    // break exactly one receipt per message.
+    // commit, not apply: a request cleared but kept by a crash would be answered again at the
+    // next start (a second receipt), and one stored but lost would get no receipt. Commit gives
+    // at most one receipt per message under a crash, not exactly one: the receipt is queued
+    // after the clear commits and sent later (ack is asynchronous, and commit's result isn't
+    // checked), so a process death in between leaves the message with none.
     @android.annotation.SuppressLint("ApplySharedPref") // on purpose, see above
     fun store(ctx: Context, p: PendingConfirm) {
         Config.prefs(ctx).edit()
@@ -57,15 +62,23 @@ object WaitingConfirm {
 class AckDestination private constructor(
     private val store: CredentialStore,
     private val server: String,
-    private val topic: String,
+    /** The ack topic, `mab-<device>-ack`: the log may name it. */
+    val topic: String,
     private val username: String,
     private val sealed: CredentialStore.Sealed?,
 ) {
-    /** Posts [text] to the ack topic: the HTTP status, or throws on a network error. Off the main thread. */
+    /** The server's host (and port), never a credential: the log may name it. */
+    val host: String get() = hostOf(server)
+
+    /**
+     * Posts [text] to the ack topic: the HTTP status, or throws on a network error. Throws
+     * [CredentialUnreadableException], sending nothing, when the password can't be decrypted.
+     * Off the main thread.
+     */
     fun post(text: String): Int {
         var c: HttpURLConnection? = null
         try {
-            val auth = basicAuth(username, sealed?.let { store.open(it) })
+            val auth = basicAuthHeader(username, sealed?.let { store.open(it) }) ?: throw CredentialUnreadableException()
             c = URL("$server/").openConnection() as HttpURLConnection
             c.requestMethod = "POST"
             c.setRequestProperty("Authorization", auth)
@@ -90,12 +103,12 @@ class AckDestination private constructor(
     }
 }
 
-/** The stored username and password as an HTTP Basic Authorization header. A Keystore call: not on the main thread. */
-fun basicAuth(ctx: Context): String = basicAuth(Config.username(ctx), CredentialStore(ctx).load())
+/**
+ * The stored username and password as an HTTP Basic Authorization header, or null when the
+ * password can't be decrypted (or none is stored): the caller logs [CREDENTIAL_UNREADABLE] and
+ * sends nothing, rather than an empty password. A Keystore call: not on the main thread.
+ */
+fun basicAuth(ctx: Context): String? = basicAuthHeader(Config.username(ctx), CredentialStore(ctx).load())
 
-private fun basicAuth(username: String, password: CharArray?): String {
-    val pw = password ?: CharArray(0)
-    val raw = "$username:${String(pw)}"
-    pw.fill('\u0000')
-    return "Basic " + Base64.encodeToString(raw.toByteArray(), Base64.NO_WRAP)
-}
+/** The stored password can't be decrypted (or none is stored), so a request was not sent. */
+class CredentialUnreadableException : Exception("credential unreadable")

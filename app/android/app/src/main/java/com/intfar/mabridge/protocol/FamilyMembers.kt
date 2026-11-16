@@ -100,6 +100,20 @@ fun isValidMemberName(name: String): Boolean {
 private fun hasDoubledSpace(normalized: String): Boolean = "  " in normalized
 
 /**
+ * Whether the [normalized] name has a Unicode space other than the plain one (a thin space
+ * U+2009, a narrow no-break space U+202F, an ideographic space U+3000, a line or paragraph
+ * separator). [normalizeMemberName] has already made a no-break space plain.
+ */
+private fun hasSpecialSpace(normalized: String): Boolean = normalized.codePoints().anyMatch { cp ->
+    val type = Character.getType(cp)
+    cp != ' '.code && (
+        type == Character.SPACE_SEPARATOR.toInt() ||
+            type == Character.LINE_SEPARATOR.toInt() ||
+            type == Character.PARAGRAPH_SEPARATOR.toInt()
+        )
+}
+
+/**
  * The words the app itself uses for a sender: "your Muse" (the owner channel), and "family" and
  * "a family member" (its fallbacks). A member with one of them as a name would read as that
  * sender ("Opening Meet: asked by your Muse"). Compared on [nameKey], so the check catches a name
@@ -161,6 +175,9 @@ fun memberProblems(members: List<FamilyMember>, device: String): List<String> {
             problems += "\"${m.name}\" can't be a member's name: the phone uses it for your Muse or the family as a whole."
         } else if (hasDoubledSpace(normalizeName(m.name))) {
             problems += "\"${m.name}\" is not a usable name: it has two spaces in a row."
+        } else if (hasSpecialSpace(normalizeName(m.name))) {
+            // It looks like an ordinary space, so the general message below wouldn't say what's wrong.
+            problems += "\"${m.name}\" is not a usable name: it has a special space; use a plain space."
         } else if (!isValidMemberName(m.name)) {
             problems += "\"${m.name}\" is not a usable name (letters, spaces, hyphens and apostrophes; up to " +
                 "$MAX_MEMBER_NAME_LENGTH characters)."
@@ -182,29 +199,51 @@ fun encodeMembers(members: List<FamilyMember>): String =
  * [device], a valid name, and a slug and a name ([nameKey]) not seen before; at most
  * [MAX_MEMBERS] are kept. So a bad stored value can't add a topic, or a second member whose name
  * differs from an earlier one only by joiners, spacing or case (lookalike letters from another
- * script aren't caught). Names come back as [normalizeMemberName] gives them.
+ * script aren't caught). Names come back as [normalizeMemberName] gives them. The lines dropped
+ * are in [decodeMembersReport].
  */
-fun decodeMembers(stored: String, device: String): List<FamilyMember> {
+fun decodeMembers(stored: String, device: String): List<FamilyMember> = decodeMembersReport(stored, device).members
+
+/**
+ * A stored member line [decodeMembers] dropped, and why, for the log: [slug] when the line has a
+ * valid one, else null, and [line] (1-based) then names it. Never the name.
+ */
+data class DroppedMember(val slug: String?, val line: Int, val reason: String)
+
+/** [decodeMembers]' result, with the stored lines it dropped (blank lines aren't drops). */
+data class DecodedMembers(val members: List<FamilyMember>, val dropped: List<DroppedMember>)
+
+/** [decodeMembers], also saying which stored lines were dropped and why. */
+fun decodeMembersReport(stored: String, device: String): DecodedMembers {
     val out = mutableListOf<FamilyMember>()
+    val dropped = mutableListOf<DroppedMember>()
     val nameKeys = mutableSetOf<String>()
-    for (line in stored.split('\n')) {
-        if (out.size >= MAX_MEMBERS) break
+    for ((i, line) in stored.split('\n').withIndex()) {
+        if (line.isEmpty()) continue
         val fields = line.split('\t')
-        if (fields.size != 2) continue
+        val slugOrNull = fields[0].takeIf { isValidMemberSlug(it, device) }
+        fun drop(reason: String) { dropped += DroppedMember(slugOrNull, i + 1, reason) }
+        if (out.size >= MAX_MEMBERS) { drop("more than $MAX_MEMBERS members"); continue }
+        if (fields.size != 2) { drop("malformed line"); continue }
         val (slug, name) = fields
-        if (!isValidMemberSlug(slug, device) || !isValidMemberName(name)) continue
-        if (out.any { it.slug == slug }) continue
-        if (!nameKeys.add(nameKey(name))) continue
+        if (slugOrNull == null) { drop("not a usable member id"); continue }
+        if (!isValidMemberName(name)) { drop("not a usable name"); continue }
+        if (out.any { it.slug == slug }) { drop("its member id repeats an earlier one"); continue }
+        if (!nameKeys.add(nameKey(name))) { drop("its name repeats an earlier member's"); continue }
         out += FamilyMember(slug, normalizeName(name))
     }
-    return out
+    return DecodedMembers(out, dropped)
 }
+
+/** The log line for [d]: `member <slug> ignored: <reason>`, or the line number when the slug isn't valid. */
+fun droppedMemberLog(d: DroppedMember): String =
+    "member ${d.slug ?: "at line ${d.line}"} ignored: ${d.reason}"
 
 /**
  * A display name as the phone stores and checks it: NFC, with each no-break space (U+00A0) as a
  * plain space, so "Mary Ann" typed either way is one name. The setup screen stores this form.
  */
 fun normalizeMemberName(name: String): String =
-    Normalizer.normalize(name, Normalizer.Form.NFC).replace(' ', ' ')
+    Normalizer.normalize(name, Normalizer.Form.NFC).replace('\u00A0', ' ')
 
 private fun normalizeName(name: String): String = normalizeMemberName(name)

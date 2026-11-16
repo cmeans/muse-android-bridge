@@ -158,4 +158,41 @@ class RustdeskConfirmTest {
         assertTrue(ackDestinationChanged(setup, setup.copy(slug = "q")))
         assertFalse(ackDestinationChanged(setup, setup.copy(username = "other", members = emptyList())))
     }
+
+    // #33 item 1: STOP is read again under the confirm lock, so a STOP that lands between the
+    // gate and the prompt answers `disabled` and stores nothing.
+    @Test fun stopReadUnderTheLockIsDisabled() {
+        val off = StopState(all = false, family = false)
+        for (stop in listOf(StopState(all = false, family = true), StopState(all = true, family = false))) {
+            assertEquals(ConfirmRequest.Disabled, confirmRequestFor(stop, null, "x1", "m1", 5_000L))
+            // STOP wins over a waiting request too: the listener's STOPPED answers that one.
+            assertEquals(ConfirmRequest.Disabled, confirmRequestFor(stop, pending, "x2", "m2", 5_000L))
+        }
+        assertEquals(ConfirmRequest.Busy, confirmRequestFor(off, pending, "x2", "m2", 5_000L))
+        assertEquals(
+            ConfirmRequest.Ask(PendingConfirm("x1", "m1", 5_000L + CONFIRM_TIMEOUT_MS)),
+            confirmRequestFor(off, null, "x1", "m1", 5_000L),
+        )
+    }
+
+    // #33 item 2 and pre-QA r1 row 3: `running` and STOP are read under the confirm lock.
+    @Test fun stoppedBridgeResolvesNothing() {
+        val off = StopState(all = false, family = false)
+        for (e in ConfirmEvent.entries) assertNull(e.name, eventUnderLock(e, running = false, stop = off))
+        assertNull(eventUnderLock(ConfirmEvent.OPEN, running = false, stop = StopState(all = true, family = true)))
+    }
+
+    @Test fun openUnderStopIsStopped() {
+        for (stop in listOf(StopState(all = false, family = true), StopState(all = true, family = false))) {
+            assertEquals(ConfirmEvent.STOPPED, eventUnderLock(ConfirmEvent.OPEN, running = true, stop = stop))
+        }
+        assertEquals(ConfirmEvent.OPEN, eventUnderLock(ConfirmEvent.OPEN, running = true, stop = StopState(all = false, family = false)))
+    }
+
+    @Test fun otherEventsUnchangedWhileRunning() {
+        val stop = StopState(all = false, family = true)
+        for (e in ConfirmEvent.entries.filter { it != ConfirmEvent.OPEN }) {
+            assertEquals(e, eventUnderLock(e, running = true, stop = stop))
+        }
+    }
 }

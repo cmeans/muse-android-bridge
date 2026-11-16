@@ -40,10 +40,10 @@ class FamilyMembersTest {
 
     @Test fun nameRules() {
         val good = listOf(
-            "Alex", "Mary Ann", "O'Neil", "O’Neil", "Jean-Luc", "José", "José",
+            "Alex", "Mary Ann", "O'Neil", "O’Neil", "Jean-Luc", "José", "Jose\u0301",
             "प्रिया",
-            "مری‌م",
-            "आचार्‍य",
+            "مری\u200Cم",
+            "आचार्\u200Dय",
             "a".repeat(24),
         )
         for (n in good) assertTrue(n, isValidMemberName(n))
@@ -71,7 +71,7 @@ class FamilyMembersTest {
         assertEquals(1, memberProblems(listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "alex")), device).size)
         assertEquals(
             1,
-            memberProblems(listOf(FamilyMember("m1", "José"), FamilyMember("m2", "José")), device).size,
+            memberProblems(listOf(FamilyMember("m1", "José"), FamilyMember("m2", "Jose\u0301")), device).size,
         )
     }
 
@@ -97,7 +97,7 @@ class FamilyMembersTest {
     }
 
     @Test fun decodeNormalizesName() {
-        assertEquals(listOf(FamilyMember("m1", "José")), decodeMembers("m1\tJosé", "p"))
+        assertEquals(listOf(FamilyMember("m1", "José")), decodeMembers("m1\tJose\u0301", "p"))
     }
 
     @Test fun decodeDropsBadLines() {
@@ -167,7 +167,7 @@ class FamilyMembersTest {
     // QA r1: names are compared on a key (NFC, joiners removed, spaces collapsed, case folded),
     // so an invisible joiner or a doubled space can't dodge the app-wording or duplicate checks.
     @Test fun joinerOrDoubledSpaceCannotDodgeAppWording() {
-        for (n in listOf("yo‍ur Muse", "fam‌ily", "a fam‍ily member", "your  Muse", "YOUR‌ MUSE")) {
+        for (n in listOf("yo\u200Dur Muse", "fam\u200Cily", "a fam\u200Dily member", "your  Muse", "YOUR\u200C MUSE")) {
             assertFalse(n, isValidMemberName(n))
         }
     }
@@ -178,14 +178,14 @@ class FamilyMembersTest {
     }
 
     @Test fun joinerCannotDodgeTheDuplicateCheck() {
-        val problems = memberProblems(listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "Al‍ex")), device)
+        val problems = memberProblems(listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "Al\u200Dex")), device)
         assertEquals(1, problems.size)
         assertTrue(problems[0], problems[0].contains("used twice"))
-        assertEquals(1, memberProblems(listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "AL‌EX")), device).size)
+        assertEquals(1, memberProblems(listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "AL\u200CEX")), device).size)
     }
 
     @Test fun joinerAppWordingProblemSaysWhy() {
-        val problem = memberProblems(listOf(FamilyMember("m1", "yo‍ur Muse")), device).single()
+        val problem = memberProblems(listOf(FamilyMember("m1", "yo\u200Dur Muse")), device).single()
         assertTrue(problem, problem.contains("the phone uses it for your Muse"))
     }
 
@@ -194,8 +194,8 @@ class FamilyMembersTest {
         val saved = java.util.Locale.getDefault()
         java.util.Locale.setDefault(java.util.Locale.forLanguageTag("tr"))
         try {
-            assertFalse(isValidMemberName("FAM‌ILY"))
-            assertEquals(1, memberProblems(listOf(FamilyMember("m1", "ALI"), FamilyMember("m2", "a‍li")), device).size)
+            assertFalse(isValidMemberName("FAM\u200CILY"))
+            assertEquals(1, memberProblems(listOf(FamilyMember("m1", "ALI"), FamilyMember("m2", "a\u200Dli")), device).size)
         } finally {
             java.util.Locale.setDefault(saved)
         }
@@ -203,13 +203,13 @@ class FamilyMembersTest {
 
     @Test fun acceptedNamesStillAccepted() {
         val good = listOf(
-            "مری‌م", // Persian with a ZWNJ
-            "आचार्‍य", // Devanagari, a ZWJ after a virama
-            "José", "José", "Mary Ann", "O'Neil", "O’Neil", "Jean-Luc",
+            "مری\u200Cم", // Persian with a ZWNJ
+            "आचार्\u200Dय", // Devanagari, a ZWJ after a virama
+            "José", "Jose\u0301", "Mary Ann", "O'Neil", "O’Neil", "Jean-Luc",
         )
         for (n in good) assertTrue(n, isValidMemberName(n))
         // All distinct except the two forms of José, which are one name.
-        val distinct = good.filter { it != "José" }.mapIndexed { i, n -> FamilyMember("m${i + 1}", n) }
+        val distinct = good.filter { it != "Jose\u0301" }.mapIndexed { i, n -> FamilyMember("m${i + 1}", n) }
         assertTrue(memberProblems(distinct, device).isEmpty())
     }
 
@@ -228,28 +228,28 @@ class FamilyMembersTest {
     // Pre-QA r2: a joiner may end a word (before a space or at the end); the key still drops it.
     @Test fun joinerBeforeSpaceOrAtEndIsAllowed() {
         for (n in listOf(
-            "അവന്‍", // Malayalam chillu by ZWJ at the end
-            "അവന്‍ അ", // ...and before a space
-            "مری‌ م", // Persian ZWNJ before a space
-            "Alex‌", "Alex‍",
+            "അവന്\u200D", // Malayalam chillu by ZWJ at the end
+            "അവന്\u200D അ", // ...and before a space
+            "مری\u200C م", // Persian ZWNJ before a space
+            "Alex\u200C", "Alex\u200D",
         )) {
             assertTrue(n, isValidMemberName(n))
         }
-        assertFalse(isValidMemberName("‍Alex"))
-        assertFalse(isValidMemberName("Alex ‍"))
+        assertFalse(isValidMemberName("\u200DAlex"))
+        assertFalse(isValidMemberName("Alex \u200D"))
         // The QA r1 hole stays closed.
-        assertFalse(isValidMemberName("your‍ Muse"))
-        assertFalse(isValidMemberName("family‌"))
-        assertEquals(1, memberProblems(listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "Alex‍")), device).size)
+        assertFalse(isValidMemberName("your\u200D Muse"))
+        assertFalse(isValidMemberName("family\u200C"))
+        assertEquals(1, memberProblems(listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "Alex\u200D")), device).size)
     }
 
     @Test fun nbspIsAPlainSpace() {
-        assertTrue(isValidMemberName("Mary Ann"))
-        assertEquals("Mary Ann", normalizeMemberName("Mary Ann"))
-        assertFalse(isValidMemberName("your Muse"))
-        assertFalse(isValidMemberName("Mary  Ann"))
-        assertEquals(1, memberProblems(listOf(FamilyMember("m1", "Mary Ann"), FamilyMember("m2", "Mary Ann")), device).size)
-        assertEquals(listOf(FamilyMember("m1", "Mary Ann")), decodeMembers("m1\tMary Ann", device))
+        assertTrue(isValidMemberName("Mary\u00A0Ann"))
+        assertEquals("Mary Ann", normalizeMemberName("Mary\u00A0Ann"))
+        assertFalse(isValidMemberName("your\u00A0Muse"))
+        assertFalse(isValidMemberName("Mary\u00A0 Ann"))
+        assertEquals(1, memberProblems(listOf(FamilyMember("m1", "Mary Ann"), FamilyMember("m2", "Mary\u00A0Ann")), device).size)
+        assertEquals(listOf(FamilyMember("m1", "Mary Ann")), decodeMembers("m1\tMary\u00A0Ann", device))
     }
 
     @Test fun doubledSpaceHasItsOwnReason() {
@@ -260,7 +260,7 @@ class FamilyMembersTest {
     }
 
     @Test fun decodeDropsRepeatedNameKey() {
-        val stored = "m1\tAlex\nm2\tAl‍ex\nm3\talex\nm4\tBo"
+        val stored = "m1\tAlex\nm2\tAl\u200Dex\nm3\talex\nm4\tBo"
         assertEquals(listOf(FamilyMember("m1", "Alex"), FamilyMember("m4", "Bo")), decodeMembers(stored, device))
     }
 
@@ -289,5 +289,65 @@ class FamilyMembersTest {
             problem("m".repeat(13), longDevice),
         )
         assertTrue(memberProblems(listOf(FamilyMember("m".repeat(12), "Alex")), longDevice).isEmpty())
+    }
+
+    // #33 item 18: other Unicode spaces are refused, and the reason says so.
+    @Test fun specialSpaceHasItsOwnReason() {
+        for (space in listOf("\u2009", "\u202F", "\u3000")) {
+            val name = "Mary${space}Ann"
+            assertFalse(isValidMemberName(name))
+            assertEquals(
+                listOf("\"$name\" is not a usable name: it has a special space; use a plain space."),
+                memberProblems(listOf(FamilyMember("m1", name)), device),
+            )
+        }
+        // A no-break space is a plain space, so it isn't special.
+        assertTrue(memberProblems(listOf(FamilyMember("m1", "Mary\u00A0Ann")), device).isEmpty())
+    }
+
+    // #33 item 19: the stored lines decodeMembers drops are reported, by slug, never by name.
+    @Test fun decodeReportsDroppedLines() {
+        val stored = listOf(
+            "m1\tAlex",
+            "m2\tAl\u200Dex", // name repeats m1's
+            "m1\tBo", // member id repeats
+            "Bad\tRobin", // bad member id
+            "m3\tRobin!", // bad name
+            "m4", // no name field
+            "",
+            "m5\tSam",
+        ).joinToString("\n")
+        val decoded = decodeMembersReport(stored, device)
+        assertEquals(listOf(FamilyMember("m1", "Alex"), FamilyMember("m5", "Sam")), decoded.members)
+        assertEquals(decodeMembers(stored, device), decoded.members)
+        assertEquals(
+            listOf(
+                "member m2 ignored: its name repeats an earlier member's",
+                "member m1 ignored: its member id repeats an earlier one",
+                "member at line 4 ignored: not a usable member id",
+                "member m3 ignored: not a usable name",
+                "member m4 ignored: malformed line",
+            ),
+            decoded.dropped.map { droppedMemberLog(it) },
+        )
+        // Slugs or line numbers only: no stored name reaches a log line.
+        for (line in decoded.dropped.map { droppedMemberLog(it) }) {
+            for (name in listOf("Alex", "Bo", "Robin", "Sam")) assertFalse(line, line.contains(name))
+        }
+    }
+
+    @Test fun decodeReportsMembersPastTheLimit() {
+        val stored = (1..10).joinToString("\n") { "m$it\tN" + "x".repeat(it) }
+        val decoded = decodeMembersReport(stored, device)
+        assertEquals(MAX_MEMBERS, decoded.members.size)
+        assertEquals(
+            listOf("member m9 ignored: more than $MAX_MEMBERS members", "member m10 ignored: more than $MAX_MEMBERS members"),
+            decoded.dropped.map { droppedMemberLog(it) },
+        )
+    }
+
+    @Test fun decodeOfNothingDropsNothing() {
+        assertTrue(decodeMembersReport("", device).dropped.isEmpty())
+        assertTrue(decodeMembersReport("m1\tAlex\n", device).dropped.isEmpty())
     }
 }
