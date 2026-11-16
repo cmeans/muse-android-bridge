@@ -1,7 +1,7 @@
 # Native app — development handoff path
 
 _Status: prepared 2026-11-11 as the map; on 2026-11-12 the maintainer handed
-implementation to claude-dev, and PR #4 implements steps 1, 3 and 4
+implementation to the developer, and PR #4 implements steps 1, 3 and 4
 below. Step 2 is implemented and awaits its long-run device evidence._
 
 ## Objective
@@ -33,8 +33,8 @@ the separate Phase 3 design is approved.
 
 - The ntfy server, topics, users, and ACL separation are live for the
   pilot phone and were verified end to end (`pilot-phone` is the docs'
-  example name; the live server uses its own, see
-  `server/ntfy-provisioning.md`).
+  example name, as in `server/ntfy-provisioning.md`; the live server uses
+  its own).
 - Security drills F1 (publisher revocation) and F2 (phone credential
   scope) passed.
 - The Tasker probe received real commands on both channels and resolved
@@ -50,7 +50,7 @@ shape concrete: manifest, configuration/registry, a foreground
 `BridgeService`, an owner screen (STOP, permissions, recent activity), a setup
 screen, and a boot receiver.
 
-It builds (2026-11-12, claude-dev, on the maintainer's workstation: Gradle
+It builds (2026-11-12, on the maintainer's workstation: Gradle
 wrapper 8.14.7 with a pinned checksum, Android Gradle plugin 8.13.2,
 Kotlin 2.2.21, compileSdk/targetSdk 36, built with a JDK 21). The
 toolchain stays on the AGP 8 / Gradle 8 line on purpose: AGP 9 needs
@@ -61,10 +61,9 @@ on the 2.2 line, at its last patch (2.2.21), to keep this baseline's
 bump small while the executor work is stacked on it; 2.3 and 2.4 also
 build on this toolchain and can follow separately. The executor (PR
 #4) has run on the pilot phone since 2026-11-12; the device results are
-on PR #4. Muse's VM never completed an SDK install
-(`sdkmanager` downloads failed in its HTTP proxy tunnel), so builds run
-on the workstation. Claude-dev may retain, refactor, or replace the
-scaffold; the protocol and tests are the contract, not this code.
+on PR #4. Builds run on the maintainer's workstation. The developer may
+retain, refactor, or replace the scaffold; the protocol and tests are the
+contract, not this code.
 
 **Building.** From `app/android`, run
 `./gradlew assembleDebug testDebugUnitTest`. It needs a JDK 17 or newer
@@ -84,10 +83,10 @@ then set the bridge up again (server, password, permissions, battery
 exemption). The phones move over with the release-key build.
 
 Known gaps before any family deployment. On 2026-11-12, PR #4 carried out
-Tasks 1-7 of the executor plan (now `docs/plans/2026-11-12-app-executor-v1.md`
-in the private muse-android-bridge-infra repo): Keystore credential storage,
-the verified registry, and unit tests for check order, TTL, dedup and
-malformed input. What follows is still open:
+Tasks 1-7 of the executor plan (now kept with the other plans, outside
+this repo): Keystore credential storage, the verified registry, and unit
+tests for check order, TTL, dedup and malformed input. What follows is
+still open:
 
 - prove reconnect/backoff over long runs (6 h and more), Doze, NordVPN,
   and 48-hour battery cost (locking the phone passed on 2026-11-12, for

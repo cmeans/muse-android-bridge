@@ -30,9 +30,9 @@ Two help paths share one phone deployment:
   bar for each. Nothing reaches the first real user's phone until the
   relevant items have recorded results.
 
-Specs, scoping docs and implementation plans live in the private
-`cmeans/muse-android-bridge-infra` repo, not here (maintainer, 2026-11-14).
-The contracts above stay with the code.
+Specs, scoping docs and implementation plans are kept in a separate
+repository, not here (maintainer, 2026-11-14). The contracts above stay with
+the code.
 
 ## Layout (to be built)
 
@@ -66,18 +66,12 @@ cached-replay behavior, registry, STOP semantics) carries over
 unchanged. Next: native Android app v1 — own ntfy subscription,
 registry launch, announce, ack, STOP UI — tested on the pilot phone
 first, same rollout order (pilot phone → helper's phone → owner's
-phone). The maintainer will hand implementation to claude-dev once
-the path is understood; the map, current scaffold status, open
+phone). The maintainer handed implementation to the developer on
+2026-11-12; the map, current scaffold status, open
 decisions, and acceptance boundary are in `app/DEV-HANDOFF.md`. The
 app under `app/android/` builds (since 2026-11-12) and has passed its
 first device tests on the pilot phone; it isn't ready for family
 phones yet.
-
-Remote: `cmeans/muse-android-bridge` (private). This VM cannot push over
-git SSH/HTTPS (egress resets SSH), so history is published as one
-API commit per local commit via the GitHub connector's `push-files`
-(snapshot per commit, same messages). Remote commit SHAs therefore
-differ from local ones; content and order match.
 
 ## License
 
