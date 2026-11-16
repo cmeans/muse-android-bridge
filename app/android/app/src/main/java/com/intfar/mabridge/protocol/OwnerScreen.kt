@@ -165,14 +165,18 @@ private fun describe(command: String, registry: Registry): Described {
     }
 }
 
-/** The fields the setup screen edits. The password isn't here: it's write-only. */
-data class Setup(val server: String, val slug: String, val username: String)
+/**
+ * The fields the setup screen edits. The password isn't here: it's write-only. The [members]
+ * are the family members; their names stay on this phone and never reach the log.
+ */
+data class Setup(val server: String, val slug: String, val username: String, val members: List<FamilyMember> = emptyList())
 
 /**
  * What saving the setup screen changes. [needsConfirm] is true when the server or the
  * device name changes on a phone that was already set up: whoever runs the new server, or
  * reads the new topics, can open apps and ring this phone, so the owner confirms with the
- * old and new hosts in front of them. [logLine] names what changed, never the password.
+ * old and new hosts in front of them. Adding a family member on a set-up phone is confirmed
+ * too: whoever can write the new member's topic can open apps on this phone. [logLine] names what changed, never the password.
  */
 data class SetupChange(val needsConfirm: Boolean, val logLine: String?)
 
@@ -183,8 +187,19 @@ fun setupChangeFor(old: Setup, new: Setup, passwordReplaced: Boolean): SetupChan
         // The username isn't validated like the others, so it's logged as an excerpt (logExcerpt).
         if (old.username != new.username) add("username ${logExcerpt(old.username).ifEmpty { "(none)" }} -> ${logExcerpt(new.username)}")
         if (passwordReplaced) add("password replaced")
+        // Slugs only: a display name never goes in the log.
+        for (m in new.members) {
+            val before = old.members.firstOrNull { it.slug == m.slug }
+            if (before == null) add("member ${m.slug} added")
+            else if (before.name != m.name) add("member ${m.slug} renamed")
+        }
+        for (m in old.members) if (new.members.none { it.slug == m.slug }) add("member ${m.slug} removed")
     }
     val wasSetUp = old.server.isNotEmpty()
-    val confirm = wasSetUp && (old.server != new.server || old.slug != new.slug)
+    val confirm = wasSetUp && (old.server != new.server || old.slug != new.slug || addedMembers(old, new).isNotEmpty())
     return SetupChange(confirm, if (parts.isEmpty()) null else "setup changed: " + parts.joinToString("; "))
 }
+
+/** The member ids in [new] that [old] didn't have, in order. */
+fun addedMembers(old: Setup, new: Setup): List<String> =
+    new.members.map { it.slug }.filter { slug -> old.members.none { it.slug == slug } }

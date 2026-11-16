@@ -4,6 +4,8 @@ import android.app.AppOpsManager
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
+import com.intfar.mabridge.protocol.FamilyMember
+import com.intfar.mabridge.protocol.decodeMembers
 import com.intfar.mabridge.protocol.isValidServer
 import com.intfar.mabridge.protocol.isValidSlug
 
@@ -22,6 +24,10 @@ object Config {
 
     fun username(ctx: Context): String =
         prefs(ctx).getString("username", "")!!
+
+    /** The family members, as stored; a bad stored line is dropped (see `decodeMembers`). */
+    fun familyMembers(ctx: Context): List<FamilyMember> =
+        decodeMembers(prefs(ctx).getString("family_members", "")!!, deviceSlug(ctx))
 
     fun ackTopic(ctx: Context) = "mab-${deviceSlug(ctx)}-ack"
 

@@ -5,4 +5,5 @@
     <item name="setup_slug" type="id" />
     <item name="setup_username" type="id" />
     <item name="setup_password" type="id" />
+    <item name="setup_add_member" type="id" />
 </resources>

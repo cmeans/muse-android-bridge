@@ -203,4 +203,47 @@ class OwnerScreenTest {
         val s = setupChangeFor(old, old.copy(username = "a b"), false)
         assertEquals("setup changed: username pilot-phone-phone -> a?b", s.logLine)
     }
+
+    private val m1 = FamilyMember("m1", "Alex")
+
+    @Test fun memberAddedLogged() {
+        val s = setupChangeFor(old, old.copy(members = listOf(m1)), false)
+        assertEquals("setup changed: member m1 added", s.logLine)
+    }
+
+    @Test fun memberRenamedLogged() {
+        val a = old.copy(members = listOf(m1))
+        val s = setupChangeFor(a, a.copy(members = listOf(FamilyMember("m1", "Sam"))), false)
+        assertEquals("setup changed: member m1 renamed", s.logLine)
+        assertFalse(s.logLine!!.contains("Alex"))
+        assertFalse(s.logLine!!.contains("Sam"))
+    }
+
+    @Test fun memberRemovedLogged() {
+        val a = old.copy(members = listOf(m1))
+        assertEquals("setup changed: member m1 removed", setupChangeFor(a, old, false).logLine)
+    }
+
+    @Test fun memberPartsFollowTheOthersInOrder() {
+        val a = old.copy(members = listOf(m1, FamilyMember("m2", "Sam")))
+        val b = old.copy(
+            username = "other",
+            members = listOf(FamilyMember("m1", "Alexa"), FamilyMember("m3", "Kim")),
+        )
+        assertEquals(
+            "setup changed: username pilot-phone-phone -> other; member m1 renamed; member m3 added; member m2 removed",
+            setupChangeFor(a, b, true.not()).logLine,
+        )
+    }
+
+    @Test fun memberAddedNeedsConfirm() {
+        assertTrue(setupChangeFor(old, old.copy(members = listOf(m1)), false).needsConfirm)
+        assertFalse(setupChangeFor(Setup("", "", ""), old.copy(members = listOf(m1)), false).needsConfirm)
+    }
+
+    @Test fun memberRenameOrRemoveNeedsNoConfirm() {
+        val a = old.copy(members = listOf(m1))
+        assertFalse(setupChangeFor(a, a.copy(members = listOf(FamilyMember("m1", "Sam"))), false).needsConfirm)
+        assertFalse(setupChangeFor(a, old, false).needsConfirm)
+    }
 }
