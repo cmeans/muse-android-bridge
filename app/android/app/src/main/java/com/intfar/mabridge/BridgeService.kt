@@ -46,6 +46,7 @@ import com.intfar.mabridge.protocol.askedBy
 import com.intfar.mabridge.protocol.confirmOutcome
 import com.intfar.mabridge.protocol.confirmPromptText
 import com.intfar.mabridge.protocol.confirmPromptTitle
+import com.intfar.mabridge.protocol.droppedMemberLog
 import com.intfar.mabridge.protocol.effectiveEvent
 import com.intfar.mabridge.protocol.hostOf
 import com.intfar.mabridge.protocol.isExpired
@@ -210,6 +211,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             setRefused(emptyList())
             Config.prefs(this).edit().putBoolean("service_running", true).apply()
             log("service started")
+            // A stored member line the bridge can't use reads no topic: say so once per start (slugs only).
+            for (d in Config.droppedMembers(this)) log(droppedMemberLog(d))
             // A request left waiting by a restart, a reboot, a setup save or a Stop bridge gets
             // its one receipt now (design §4), before subscribing. A save that changed the server
             // or device name has answered it already, on the old ones (SetupActivity.apply).

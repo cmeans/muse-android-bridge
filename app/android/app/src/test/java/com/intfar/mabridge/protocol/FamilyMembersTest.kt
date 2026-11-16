@@ -290,4 +290,64 @@ class FamilyMembersTest {
         )
         assertTrue(memberProblems(listOf(FamilyMember("m".repeat(12), "Alex")), longDevice).isEmpty())
     }
+
+    // #33 item 18: other Unicode spaces are refused, and the reason says so.
+    @Test fun specialSpaceHasItsOwnReason() {
+        for (space in listOf(" ", " ", "　")) {
+            val name = "Mary${space}Ann"
+            assertFalse(isValidMemberName(name))
+            assertEquals(
+                listOf("\"$name\" is not a usable name: it has a special space; use a plain space."),
+                memberProblems(listOf(FamilyMember("m1", name)), device),
+            )
+        }
+        // A no-break space is a plain space, so it isn't special.
+        assertTrue(memberProblems(listOf(FamilyMember("m1", "Mary Ann")), device).isEmpty())
+    }
+
+    // #33 item 19: the stored lines decodeMembers drops are reported, by slug, never by name.
+    @Test fun decodeReportsDroppedLines() {
+        val stored = listOf(
+            "m1\tAlex",
+            "m2\tAl‍ex", // name repeats m1's
+            "m1\tBo", // member id repeats
+            "Bad\tRobin", // bad member id
+            "m3\tRobin!", // bad name
+            "m4", // no name field
+            "",
+            "m5\tSam",
+        ).joinToString("\n")
+        val decoded = decodeMembersReport(stored, device)
+        assertEquals(listOf(FamilyMember("m1", "Alex"), FamilyMember("m5", "Sam")), decoded.members)
+        assertEquals(decodeMembers(stored, device), decoded.members)
+        assertEquals(
+            listOf(
+                "member m2 ignored: its name repeats an earlier member's",
+                "member m1 ignored: its member id repeats an earlier one",
+                "member at line 4 ignored: not a usable member id",
+                "member m3 ignored: not a usable name",
+                "member m4 ignored: malformed line",
+            ),
+            decoded.dropped.map { droppedMemberLog(it) },
+        )
+        // Slugs or line numbers only: no stored name reaches a log line.
+        for (line in decoded.dropped.map { droppedMemberLog(it) }) {
+            for (name in listOf("Alex", "Bo", "Robin", "Sam")) assertFalse(line, line.contains(name))
+        }
+    }
+
+    @Test fun decodeReportsMembersPastTheLimit() {
+        val stored = (1..10).joinToString("\n") { "m$it\tN" + "x".repeat(it) }
+        val decoded = decodeMembersReport(stored, device)
+        assertEquals(MAX_MEMBERS, decoded.members.size)
+        assertEquals(
+            listOf("member m9 ignored: more than $MAX_MEMBERS members", "member m10 ignored: more than $MAX_MEMBERS members"),
+            decoded.dropped.map { droppedMemberLog(it) },
+        )
+    }
+
+    @Test fun decodeOfNothingDropsNothing() {
+        assertTrue(decodeMembersReport("", device).dropped.isEmpty())
+        assertTrue(decodeMembersReport("m1\tAlex\n", device).dropped.isEmpty())
+    }
 }

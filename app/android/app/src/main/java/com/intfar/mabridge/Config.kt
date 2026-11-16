@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import com.intfar.mabridge.protocol.FamilyMember
+import com.intfar.mabridge.protocol.DroppedMember
 import com.intfar.mabridge.protocol.decodeMembers
+import com.intfar.mabridge.protocol.decodeMembersReport
 import com.intfar.mabridge.protocol.isValidServer
 import com.intfar.mabridge.protocol.isValidSlug
 
@@ -28,6 +30,10 @@ object Config {
     /** The family members, as stored; a bad stored line is dropped (see `decodeMembers`). */
     fun familyMembers(ctx: Context): List<FamilyMember> =
         decodeMembers(prefs(ctx).getString("family_members", "")!!, deviceSlug(ctx))
+
+    /** The stored member lines [familyMembers] drops, and why; the service logs them at start. */
+    fun droppedMembers(ctx: Context): List<DroppedMember> =
+        decodeMembersReport(prefs(ctx).getString("family_members", "")!!, deviceSlug(ctx)).dropped
 
     /**
      * The member slugs whose topics the server refused on the bridge's last subscribe (design §2),
