@@ -25,6 +25,7 @@ import android.util.Log
 import android.widget.Toast
 import com.intfar.mabridge.protocol.Backoff
 import com.intfar.mabridge.protocol.CONFIRM_TIMEOUT_MS
+import com.intfar.mabridge.protocol.CREDENTIAL_UNREADABLE
 import com.intfar.mabridge.protocol.Channel
 import com.intfar.mabridge.protocol.Command
 import com.intfar.mabridge.protocol.ConfirmEvent
@@ -262,7 +263,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             val topics = subscribeTopics(slug, members)
             var c: HttpURLConnection? = null
             try {
-                c = openStream(topics)
+                // Read once per connect, for the stream and its probes: never an empty password.
+                val auth = basicAuth() ?: throw CredentialUnreadableException()
+                c = openStream(topics, auth)
                 var code = c.responseCode
                 var refused = emptyList<String>()
                 if (code == 403 && topics.size > 1) {
@@ -272,10 +275,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                     val probed = LinkedHashMap<String, Int>()
                     // The owner topic comes first: a network error on its probe is thrown to the
                     // catch below, so it logs today's `subscribe error` and backs off.
-                    probed[owner] = probe(owner, throwErrors = true)
+                    probed[owner] = probe(owner, auth, throwErrors = true)
                     for (t in topics) {
                         if (!running) break
-                        if (t != owner) probed[t] = probe(t)
+                        if (t != owner) probed[t] = probe(t, auth)
                     }
                     if (!running) break
                     if (probed[owner] == 200) {
@@ -284,7 +287,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                         if (refused.isNotEmpty()) {
                             val answers = refused.map { it to probed[memberTopic(slug, it)] }
                             log("subscribe: HTTP 403; family topics refused: ${refusedForLog(answers)}")
-                            c = openStream(readable)
+                            c = openStream(readable, auth)
                             code = c.responseCode
                         }
                     } else {
@@ -314,6 +317,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                     // The bridge ending its own stream to pick up a member topic isn't news.
                     if (running && !reconnectNow) log("stream ended")
                 }
+            } catch (_: CredentialUnreadableException) {
+                // Backs off like any failed connect, one line each time.
+                if (running) log("$CREDENTIAL_UNREADABLE; not subscribing")
             } catch (e: Exception) {
                 if (running && !reconnectNow) log("subscribe error: ${e.javaClass.simpleName}")
             } finally {
@@ -325,8 +331,11 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
-    /** Opens the stream for [topics]; [conn] tracks it, so stopping the bridge can end it. */
-    private fun openStream(topics: List<String>): HttpURLConnection {
+    /**
+     * Opens the stream for [topics] with [auth], the Authorization header; [conn] tracks it, so
+     * stopping the bridge can end it.
+     */
+    private fun openStream(topics: List<String>, auth: String): HttpURLConnection {
         // Catch up from the last message seen, so a command sent during a
         // reconnect gap still arrives; the gate drops anything stale (120 s)
         // or already seen. With no message seen yet, look back 2 minutes.
@@ -334,7 +343,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         val since = sinceParam(Config.prefs(this).getString(PREF_LAST_ID, null))
         val c = URL("${Config.server(this)}/${topics.joinToString(",")}/json?since=$since").openConnection() as HttpURLConnection
         conn = c
-        c.setRequestProperty("Authorization", basicAuth())
+        c.setRequestProperty("Authorization", auth)
         c.connectTimeout = 15_000
         // ntfy sends a keepalive about every 45 s: a silent stream for this
         // long is a dead (half-open) connection, so reconnect.
@@ -347,13 +356,13 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
      * (readable) or 403 (refused) at once. -1 for a network error, which, like any status but
      * 200, counts as refused for this round (the log names which, [refusedForLog]); with
      * [throwErrors] the error is thrown instead. Short timeouts: it holds up a reconnect, or the
-     * receipt queue when the 15-minute timer runs it.
+     * receipt queue when the 15-minute timer runs it. [auth] is the Authorization header.
      */
-    private fun probe(topic: String, throwErrors: Boolean = false): Int {
+    private fun probe(topic: String, auth: String, throwErrors: Boolean = false): Int {
         var c: HttpURLConnection? = null
         return try {
             c = URL("${Config.server(this)}/$topic/json?poll=1&since=none").openConnection() as HttpURLConnection
-            c.setRequestProperty("Authorization", basicAuth())
+            c.setRequestProperty("Authorization", auth)
             c.connectTimeout = PROBE_TIMEOUT_MS
             c.readTimeout = PROBE_TIMEOUT_MS
             c.responseCode
@@ -392,7 +401,14 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         val slug = Config.deviceSlug(this)
         val refused = Config.refusedMembers(this)
         if (refused.isEmpty()) return
-        val readable = refused.filter { running && probe(memberTopic(slug, it)) == 200 }
+        val auth = basicAuth()
+        if (auth == null) {
+            // One line per tick, and the timer stays armed: re-entering the password restarts the bridge.
+            log("$CREDENTIAL_UNREADABLE; family topics not asked about")
+            main.postDelayed(probeTick, PROBE_EVERY_MS)
+            return
+        }
+        val readable = refused.filter { running && probe(memberTopic(slug, it), auth) == 200 }
         if (!running) return
         if (readable.isEmpty()) {
             main.postDelayed(probeTick, PROBE_EVERY_MS)
@@ -403,7 +419,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         conn?.disconnect()
     }
 
-    private fun basicAuth(): String = basicAuth(this)
+    /** The Authorization header, or null when the stored password can't be decrypted. */
+    private fun basicAuth(): String? = basicAuth(this)
 
     // ---- protocol -----------------------------------------------------------
 
@@ -966,6 +983,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 try {
                     val code = dest.post(text)
                     if (code != 200) log("receipt failed: HTTP $code: $text")
+                } catch (_: CredentialUnreadableException) {
+                    log("$CREDENTIAL_UNREADABLE; receipt not sent: $text")
                 } catch (e: Exception) {
                     log("receipt failed: ${e.javaClass.simpleName}: $text")
                 }

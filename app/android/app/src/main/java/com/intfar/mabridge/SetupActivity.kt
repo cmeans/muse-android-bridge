@@ -12,7 +12,10 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import com.intfar.mabridge.protocol.CREDENTIAL_UNREADABLE
 import com.intfar.mabridge.protocol.FamilyMember
+import com.intfar.mabridge.protocol.SETUP_RECEIPT_SENT
+import com.intfar.mabridge.protocol.setupReceiptFailedLog
 import com.intfar.mabridge.protocol.MAX_MEMBERS
 import com.intfar.mabridge.protocol.Setup
 import com.intfar.mabridge.protocol.Receipts
@@ -375,8 +378,9 @@ class SetupActivity : Activity() {
      * decrypted on the send thread. The request is cleared under [WaitingConfirm.lock], which the
      * bridge's own answers hold too, so exactly one of them sends its receipt. It is sent once:
      * if the send fails (no network, or the old server refuses it) it is lost and logged as
-     * `receipt failed`; if the app is killed before it
-     * goes, it is lost with no further log line (PROTOCOL §5e). A
+     * `receipt failed (old server <host>, mab-<old device>-ack): …`; a sent one is logged as
+     * `receipt sent (setup changed)`; if the app is killed before it goes, it is lost with
+     * neither line (PROTOCOL §5e). A
      * running bridge's prompt and timer go when the restart after the save stops it; a tap before
      * that finds no request.
      */
@@ -392,12 +396,19 @@ class SetupActivity : Activity() {
         }
         BridgeLog.append(ctx, answer.log)
         val text = Receipts.withId(answer.receipt, pending.id)
+        // The lines name the old server and topic, so a failure next to `setup changed: …` doesn't
+        // read as the new server refusing it; a sent receipt says so, unlike one lost to a kill.
         thread(name = "mab-setup-receipt") {
             try {
                 val code = dest.post(text)
-                if (code != 200) BridgeLog.append(ctx, "receipt failed: HTTP $code: $text")
+                BridgeLog.append(
+                    ctx,
+                    if (code == 200) SETUP_RECEIPT_SENT else setupReceiptFailedLog(dest.host, dest.topic, "HTTP $code", text),
+                )
+            } catch (_: CredentialUnreadableException) {
+                BridgeLog.append(ctx, "$CREDENTIAL_UNREADABLE; " + setupReceiptFailedLog(dest.host, dest.topic, "not sent", text))
             } catch (e: Exception) {
-                BridgeLog.append(ctx, "receipt failed: ${e.javaClass.simpleName}: $text")
+                BridgeLog.append(ctx, setupReceiptFailedLog(dest.host, dest.topic, e.javaClass.simpleName, text))
             }
         }
     }

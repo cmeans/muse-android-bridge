@@ -2,7 +2,9 @@ package com.intfar.mabridge
 
 import android.content.Context
 import android.util.Base64
+import com.intfar.mabridge.protocol.CREDENTIAL_UNREADABLE
 import com.intfar.mabridge.protocol.PendingConfirm
+import com.intfar.mabridge.protocol.hostOf
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -60,15 +62,23 @@ object WaitingConfirm {
 class AckDestination private constructor(
     private val store: CredentialStore,
     private val server: String,
-    private val topic: String,
+    /** The ack topic, `mab-<device>-ack`: the log may name it. */
+    val topic: String,
     private val username: String,
     private val sealed: CredentialStore.Sealed?,
 ) {
-    /** Posts [text] to the ack topic: the HTTP status, or throws on a network error. Off the main thread. */
+    /** The server's host (and port), never a credential: the log may name it. */
+    val host: String get() = hostOf(server)
+
+    /**
+     * Posts [text] to the ack topic: the HTTP status, or throws on a network error. Throws
+     * [CredentialUnreadableException], sending nothing, when the password can't be decrypted.
+     * Off the main thread.
+     */
     fun post(text: String): Int {
         var c: HttpURLConnection? = null
         try {
-            val auth = basicAuth(username, sealed?.let { store.open(it) })
+            val auth = basicAuth(username, sealed?.let { store.open(it) }) ?: throw CredentialUnreadableException()
             c = URL("$server/").openConnection() as HttpURLConnection
             c.requestMethod = "POST"
             c.setRequestProperty("Authorization", auth)
@@ -93,12 +103,19 @@ class AckDestination private constructor(
     }
 }
 
-/** The stored username and password as an HTTP Basic Authorization header. A Keystore call: not on the main thread. */
-fun basicAuth(ctx: Context): String = basicAuth(Config.username(ctx), CredentialStore(ctx).load())
+/**
+ * The stored username and password as an HTTP Basic Authorization header, or null when the
+ * password can't be decrypted (or none is stored): the caller logs [CREDENTIAL_UNREADABLE] and
+ * sends nothing, rather than an empty password. A Keystore call: not on the main thread.
+ */
+fun basicAuth(ctx: Context): String? = basicAuth(Config.username(ctx), CredentialStore(ctx).load())
 
-private fun basicAuth(username: String, password: CharArray?): String {
-    val pw = password ?: CharArray(0)
+private fun basicAuth(username: String, password: CharArray?): String? {
+    val pw = password ?: return null
     val raw = "$username:${String(pw)}"
     pw.fill('\u0000')
     return "Basic " + Base64.encodeToString(raw.toByteArray(), Base64.NO_WRAP)
 }
+
+/** The stored password can't be decrypted (or none is stored), so a request was not sent. */
+class CredentialUnreadableException : Exception("credential unreadable")
