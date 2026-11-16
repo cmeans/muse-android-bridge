@@ -52,11 +52,13 @@ class OwnerScreenTest {
     }
 
     @Test fun runLockRecheckLines() {
-        // #33 item 21: STOP while waiting to run shows as a STOP refusal; a stopped bridge's
-        // confirmed launch as not opened; any other command left unrun stays out of Recent.
+        // #33 item 21: STOP while waiting to run shows as a STOP refusal. A command left unrun by
+        // a stopped bridge, and a confirmed launch kept for the next start, stay out of Recent
+        // (the next start's not-confirmed line shows instead).
         assertEquals("Refused, stopped: Meet · your Muse", item("disabled (owner): launch meet (STOP while waiting to run)")?.text)
-        assertEquals("Not opened, no answer: RustDesk · a family member", item("not-confirmed (family/m1): launch rustdesk (bridge stopped while waiting to run)")?.text)
         assertEquals(null, item("not-run (owner): ring find (bridge stopped while waiting to run)"))
+        assertEquals(null, item("kept (family/m1): launch rustdesk (bridge stopped while waiting to run; answered at the next start)"))
+        assertEquals(null, item("not-answered (family/m1): launch rustdesk (bridge stopped while waiting to run; another request is stored)"))
     }
 
     @Test fun refusalsAreMarked() {

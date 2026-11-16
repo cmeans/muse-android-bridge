@@ -252,9 +252,11 @@ d. Only one request waits at a time. A second family `launch rustdesk` while
    while one is pending withdraws it and answers `disabled`; so does an Open
    tapped while STOP is on, and a STOP switched on while a request is being
    checked: it answers `disabled`, and any prompt already posted is withdrawn.
-   An Open can also wait up to 5 s behind another command's launch check
-   before its own launch starts: STOP in that wait answers `disabled`, and
-   the bridge stopping in that wait answers `not-confirmed`; nothing opens.
+   An Open can also wait, about 5 s per launch check ahead of it, behind
+   another command's launch check before its own launch starts: STOP in that
+   wait answers `disabled`, and nothing opens. If the bridge stops in that
+   wait, nothing opens and the request is kept, so the next start answers it
+   `not-confirmed` (e).
    Past the deadline, STOP answers `not-confirmed` like a late tap (c).
 e. The pending request is kept across a restart: the next start withdraws it
    and answers `not-confirmed`. A setup save that changes the server or the
@@ -334,8 +336,9 @@ installed. A command refused by the limit doesn't count. The first
 refusal of a run (per channel and kind) gets a `rate-limited` receipt;
 the run's repeats within the window are logged only, and a command that
 runs again starts a new run. The limits are counted since the executor
-last started. Receipts for messages the limit never sees
-(`unknown-command`, `disabled`) are not capped yet.
+last started. Receipts the limit doesn't cap (`unknown-command`, and
+`disabled`, whether from the STOP check or from the re-check before a
+waiting command runs, §7) are not capped yet.
 
 Receipts confirm what the *executor did*, not what the user did next
 (`ok launch meet` means Meet came to the foreground, not that anyone
@@ -359,8 +362,11 @@ The executor MUST provide, reachable by the phone's owner without help:
 
 Disabling a channel is local and instant; it does not require contacting any
 publisher or the server admin. A command that has passed the checks but is
-still waiting to run (behind another command's 5 s launch check) is checked
-against STOP again before it runs, and answers `disabled`. Re-enabling is likewise the owner's act alone.
+still waiting to run (behind another command's launch check, about 5 s each)
+is checked against STOP again before it runs, and answers `disabled`. One
+still waiting when the bridge stops runs nothing and gets no receipt: it was
+read and recorded as seen, so it isn't replayed either (a family RustDesk
+Open is the exception, §5d). Re-enabling is likewise the owner's act alone.
 
 ## 8. Threat model (summary)
 
