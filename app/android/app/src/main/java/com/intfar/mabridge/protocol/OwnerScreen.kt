@@ -9,9 +9,6 @@ package com.intfar.mabridge.protocol
 fun hostOf(server: String): String =
     server.trim().substringAfter("://").trimEnd('/')
 
-/** Who sent a command, in the owner's words: the owner channel is the owner's own Muse. */
-fun askedBy(channel: String): String = if (channel == "owner") "your Muse" else "family"
-
 /** Who sent a command, in the owner's words: the owner's own Muse, or the family member's name. */
 fun askedBy(source: Source): String = source.member?.name ?: "your Muse"
 

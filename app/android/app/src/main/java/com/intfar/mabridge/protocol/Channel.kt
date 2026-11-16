@@ -67,3 +67,13 @@ fun sourceForTopic(topic: String, device: String, members: List<FamilyMember>): 
 /** The topics to subscribe to: the owner topic, then each member topic in setup order. */
 fun subscribeTopics(device: String, members: List<FamilyMember>): List<String> =
     listOf(Channel.OWNER.topic(device)) + members.map { memberTopic(device, it.slug) }
+
+/**
+ * The topics to subscribe to after ntfy refused the whole list (design §2): the [owner] topic,
+ * then each member topic whose one-shot probe in [probed] answered 200, in [probed]'s order
+ * (setup order). Any other answer counts as refused for this round: a 403, another status, or
+ * a network error (passed as any non-200 code). The owner's own entry, if present, is the
+ * caller's to check: a refused owner topic is a plain `subscribe: HTTP 403`.
+ */
+fun topicsAfterProbe(owner: String, probed: Map<String, Int>): List<String> =
+    listOf(owner) + probed.filter { (topic, code) -> topic != owner && code == 200 }.keys

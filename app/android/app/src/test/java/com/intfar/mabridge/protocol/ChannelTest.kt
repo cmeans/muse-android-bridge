@@ -103,4 +103,22 @@ class ChannelTest {
         assertEquals(listOf("mab-p-owner", "mab-p-family-m1", "mab-p-family-m2"), subscribeTopics("p", listOf(m1, m2)))
         assertEquals(listOf("mab-p-owner"), subscribeTopics("p", emptyList()))
     }
+
+    @Test fun subscribeFallback() {
+        val owner = "mab-p-owner"
+        assertEquals(
+            listOf(owner, "mab-p-family-m1"),
+            topicsAfterProbe(owner, linkedMapOf(owner to 200, "mab-p-family-m1" to 200, "mab-p-family-m2" to 403)),
+        )
+        // The owner's own probe isn't required in the map; members keep setup order.
+        assertEquals(
+            listOf(owner, "mab-p-family-m2", "mab-p-family-m1"),
+            topicsAfterProbe(owner, linkedMapOf("mab-p-family-m2" to 200, "mab-p-family-m1" to 200)),
+        )
+        // All refused: the owner topic alone.
+        assertEquals(listOf(owner), topicsAfterProbe(owner, linkedMapOf(owner to 200, "mab-p-family-m1" to 403, "mab-p-family-m2" to 403)))
+        // A network error (-1) or any status other than 200 counts as refused for this round.
+        assertEquals(listOf(owner), topicsAfterProbe(owner, linkedMapOf("mab-p-family-m1" to -1, "mab-p-family-m2" to 500)))
+        assertEquals(listOf(owner), topicsAfterProbe(owner, emptyMap<String, Int>()))
+    }
 }

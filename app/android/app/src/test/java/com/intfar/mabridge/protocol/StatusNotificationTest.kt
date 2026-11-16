@@ -4,16 +4,73 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class StatusNotificationTest {
+    private val none = StopState(all = false, family = false)
+    private val family = StopState(all = false, family = true)
+    private val all = StopState(all = true, family = false)
+    private val host = "ntfy.example.com"
+
     @Test fun nothingStopped() {
-        val s = statusNotificationFor(StopState(all = false, family = false), "ntfy.example.com")
+        val s = statusNotificationFor(none, host, members = 1, refusedNames = emptyList())
         assertEquals("Listening for your Muse and family on ntfy.example.com. Tap to open.", s.text)
         assertEquals(listOf(StopButton.FAMILY, StopButton.ALL), s.buttons)
     }
 
     @Test fun familyStopped() {
-        val s = statusNotificationFor(StopState(all = false, family = true), "ntfy.example.com")
+        val s = statusNotificationFor(family, host, members = 1, refusedNames = emptyList())
         assertEquals("Listening for your Muse on ntfy.example.com; family stopped. Tap to open.", s.text)
         assertEquals(listOf(StopButton.ALL), s.buttons)
+    }
+
+    @Test fun noMembersText() {
+        val s = statusNotificationFor(none, host, members = 0, refusedNames = emptyList())
+        assertEquals("Listening for your Muse on ntfy.example.com. Tap to open.", s.text)
+        // Nothing to stop: no Stop family button.
+        assertEquals(listOf(StopButton.ALL), s.buttons)
+    }
+
+    @Test fun noMembersFamilyStoppedKeepsItsText() {
+        val s = statusNotificationFor(family, host, members = 0, refusedNames = emptyList())
+        assertEquals("Listening for your Muse on ntfy.example.com; family stopped. Tap to open.", s.text)
+        assertEquals(listOf(StopButton.ALL), s.buttons)
+    }
+
+    @Test fun noMembersAllStopped() {
+        val s = statusNotificationFor(all, host, members = 0, refusedNames = emptyList())
+        assertEquals("Everything stopped. Tap to open.", s.text)
+        assertEquals(emptyList<StopButton>(), s.buttons)
+    }
+
+    @Test fun someMembersRefused() {
+        val s = statusNotificationFor(none, host, members = 2, refusedNames = listOf("Alex"))
+        assertEquals("Listening for your Muse and family on ntfy.example.com. Can't reach: Alex", s.text)
+        assertEquals(listOf(StopButton.FAMILY, StopButton.ALL), s.buttons)
+    }
+
+    @Test fun allMembersRefused() {
+        val s = statusNotificationFor(none, host, members = 2, refusedNames = listOf("Alex", "Helper B"))
+        assertEquals("Listening for your Muse on ntfy.example.com. Can't reach: Alex, Helper B", s.text)
+        assertEquals(listOf(StopButton.FAMILY, StopButton.ALL), s.buttons)
+    }
+
+    @Test fun oneMemberRefusedIsAllRefused() {
+        val s = statusNotificationFor(none, host, members = 1, refusedNames = listOf("Alex"))
+        assertEquals("Listening for your Muse on ntfy.example.com. Can't reach: Alex", s.text)
+    }
+
+    @Test fun familyStoppedWinsOverRefused() {
+        for (refused in listOf(listOf("Alex"), listOf("Alex", "Helper B"))) {
+            val s = statusNotificationFor(family, host, members = 2, refusedNames = refused)
+            assertEquals("Listening for your Muse on ntfy.example.com; family stopped. Tap to open.", s.text)
+            assertEquals(listOf(StopButton.ALL), s.buttons)
+        }
+    }
+
+    @Test fun allStoppedWinsOverRefused() {
+        for (refused in listOf(emptyList(), listOf("Alex"), listOf("Alex", "Helper B"))) {
+            val s = statusNotificationFor(all, host, members = 2, refusedNames = refused)
+            assertEquals("Everything stopped. Tap to open.", s.text)
+            assertEquals(emptyList<StopButton>(), s.buttons)
+        }
     }
 
     @Test fun eachButtonTurnsOnItsOwnSwitch() {
@@ -41,7 +98,7 @@ class StatusNotificationTest {
 
     @Test fun allStoppedWinsAndOffersNoButtons() {
         for (family in listOf(false, true)) {
-            val s = statusNotificationFor(StopState(all = true, family = family), "ntfy.example.com")
+            val s = statusNotificationFor(StopState(all = true, family = family), host, members = 1, refusedNames = emptyList())
             assertEquals("Everything stopped. Tap to open.", s.text)
             assertEquals(emptyList<StopButton>(), s.buttons)
         }
@@ -82,7 +139,6 @@ class StatusNotificationTest {
     }
 
     @Test fun otherActionsAreNotTaps() {
-        val none = StopState(all = false, family = false)
         assertEquals(null, stopTapFor(null, none))
         assertEquals(null, stopTapFor("com.intfar.mabridge.STOP_RING", none))
         assertEquals(null, stopTapFor("com.intfar.mabridge.REPOST_STATUS", none))

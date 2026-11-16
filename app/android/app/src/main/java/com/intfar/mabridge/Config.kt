@@ -29,6 +29,15 @@ object Config {
     fun familyMembers(ctx: Context): List<FamilyMember> =
         decodeMembers(prefs(ctx).getString("family_members", "")!!, deviceSlug(ctx))
 
+    /**
+     * The member slugs whose topics the server refused on the bridge's last subscribe (design §2),
+     * in setup order: the service writes it, the owner screen reads it. Empty while all are read.
+     */
+    const val PREF_REFUSED_MEMBERS = "refused_members"
+
+    fun refusedMembers(ctx: Context): List<String> =
+        prefs(ctx).getString(PREF_REFUSED_MEMBERS, "")!!.split(',').filter { it.isNotEmpty() }
+
     fun ackTopic(ctx: Context) = "mab-${deviceSlug(ctx)}-ack"
 
     fun stopAll(ctx: Context) = prefs(ctx).getBoolean(com.intfar.mabridge.protocol.PREF_STOP_ALL, false)
