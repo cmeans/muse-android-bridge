@@ -205,6 +205,6 @@ fun decodeMembers(stored: String, device: String): List<FamilyMember> {
  * plain space, so "Mary Ann" typed either way is one name. The setup screen stores this form.
  */
 fun normalizeMemberName(name: String): String =
-    Normalizer.normalize(name, Normalizer.Form.NFC).replace(' ', ' ')
+    Normalizer.normalize(name, Normalizer.Form.NFC).replace('\u00A0', ' ')
 
 private fun normalizeName(name: String): String = normalizeMemberName(name)
