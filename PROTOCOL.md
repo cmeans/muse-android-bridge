@@ -289,7 +289,7 @@ warn about a phone clock that's off (§2.3's freshness check uses that
 clock).
 
 A family `launch rustdesk` that reaches the confirm step (§5) answers when the
-outcome is known, not when it arrives. Usually that is at most about 2 minutes after
+outcome is known, not when it arrives. That is at most about 2 minutes after
 the phone handles it, and the phone accepts a command up to 2 minutes old
 (§2.3), so a publisher can wait up to about 4 minutes. After deep sleep it can
 be later: the deadline is noticed at the next line read from the server, up to
