@@ -63,9 +63,9 @@ operator's existing instance; `auth-default-access: deny-all`).
 `<device>` is a short lowercase slug chosen at provisioning (`pilot-phone`,
 `helper-pixel`, `alex-phone`, …). Topic names use hyphens only.
 
-`<member>` is a short slug the owner picks when adding the member on the
-phone (`m1`, `helper-a`): lowercase letters and digits in hyphen-separated
-words. It is a neutral id, never a person's name: it travels in every
+`<member>` is a short slug given at provisioning, which the owner types when
+adding the member on the phone (`m1`, `helper-a`): lowercase letters and
+digits in hyphen-separated words. It is a neutral id, never a person's name: it travels in every
 message's topic field and sits in the server's ACL (§2.2 keeps personal
 information out of messages). The member's name lives only in the phone's
 setup, which uses it in announcements. Rules:
