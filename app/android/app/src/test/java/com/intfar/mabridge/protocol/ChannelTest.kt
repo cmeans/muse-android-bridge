@@ -2,6 +2,7 @@ package com.intfar.mabridge.protocol
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -75,5 +76,60 @@ class ChannelTest {
             "https://ntfy example.com", "https://ntfy.example.com?x=1", "https://user@ntfy.example.com", "ftp://ntfy.example.com")) {
             assertFalse(s, isValidServer(s))
         }
+    }
+
+    private val m1 = FamilyMember("m1", "Alex")
+    private val m2 = FamilyMember("m2", "Robin")
+
+    @Test fun memberTopicResolves() {
+        assertEquals(Source(Channel.FAMILY, m1), sourceForTopic("mab-p-family-m1", "p", listOf(m1)))
+        assertEquals(Source(Channel.OWNER, null), sourceForTopic("mab-p-owner", "p", listOf(m1)))
+    }
+
+    @Test fun sharedFamilyTopicRetired() {
+        assertNull(sourceForTopic("mab-p-family", "p", listOf(m1)))
+    }
+
+    @Test fun removedMemberTopicIsIgnored() {
+        assertNull(sourceForTopic("mab-p-family-m2", "p", listOf(m1)))
+    }
+
+    @Test fun logTagNamesTheSlugNotTheName() {
+        assertEquals("owner", Source(Channel.OWNER, null).logTag())
+        assertEquals("family/m1", Source(Channel.FAMILY, m1).logTag())
+    }
+
+    @Test fun subscribeTopicsOrder() {
+        assertEquals(listOf("mab-p-owner", "mab-p-family-m1", "mab-p-family-m2"), subscribeTopics("p", listOf(m1, m2)))
+        assertEquals(listOf("mab-p-owner"), subscribeTopics("p", emptyList()))
+    }
+
+    @Test fun subscribeFallback() {
+        val owner = "mab-p-owner"
+        assertEquals(
+            listOf(owner, "mab-p-family-m1"),
+            topicsAfterProbe(owner, linkedMapOf(owner to 200, "mab-p-family-m1" to 200, "mab-p-family-m2" to 403)),
+        )
+        // The owner's own probe isn't required in the map; members keep setup order.
+        assertEquals(
+            listOf(owner, "mab-p-family-m2", "mab-p-family-m1"),
+            topicsAfterProbe(owner, linkedMapOf("mab-p-family-m2" to 200, "mab-p-family-m1" to 200)),
+        )
+        // All refused: the owner topic alone.
+        assertEquals(listOf(owner), topicsAfterProbe(owner, linkedMapOf(owner to 200, "mab-p-family-m1" to 403, "mab-p-family-m2" to 403)))
+        // A network error (-1) or any status other than 200 counts as refused for this round.
+        assertEquals(listOf(owner), topicsAfterProbe(owner, linkedMapOf("mab-p-family-m1" to -1, "mab-p-family-m2" to 500)))
+        assertEquals(listOf(owner), topicsAfterProbe(owner, emptyMap<String, Int>()))
+    }
+    @Test fun refusedForLogSaysWhatHappened() {
+        // A 403 is the plain refusal; anything else names its answer, so a flaky probe doesn't
+        // read as a missing grant. Slugs only, never names.
+        assertEquals("family/m1", refusedForLog(listOf("m1" to 403)))
+        assertEquals(
+            "family/m1, family/m2 (no answer), family/m3 (HTTP 500)",
+            refusedForLog(listOf("m1" to 403, "m2" to -1, "m3" to 500)),
+        )
+        // A member the probe never reached (the bridge stopped mid-round) has no answer either.
+        assertEquals("family/m4 (no answer)", refusedForLog(listOf("m4" to null)))
     }
 }

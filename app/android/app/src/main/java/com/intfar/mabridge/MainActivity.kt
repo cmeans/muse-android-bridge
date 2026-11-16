@@ -283,7 +283,7 @@ class MainActivity : Activity() {
             .getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         batteryTile.text = if (battery in 0..100) "$battery%" else "?"
         onOff(museTile, !stop.all)
-        onOff(familyTile, !stop.all && !stop.family)
+        refreshFamily(stop)
 
         // Stop everything turns its card red while it's on, with the way back spelled out.
         allCard.background = if (stop.all) ui.rounded(R.color.stop_card_bg, 16, R.color.stop_card_border)
@@ -295,6 +295,27 @@ class MainActivity : Activity() {
 
         refreshPermissions()
         refreshRecent()
+    }
+
+    /**
+     * The Family tile and the Stop family card. With no members set up the phone reads no family
+     * topic, so there's nothing to stop. While the server refuses some members' topics (the
+     * service keeps their slugs in a preference), the tile names them; a STOP switch wins.
+     */
+    private fun refreshFamily(stop: StopState) {
+        val members = Config.familyMembers(this)
+        familyCard.visibility = if (members.isEmpty()) View.GONE else View.VISIBLE
+        val refused = Config.refusedMembers(this)
+        val refusedNames = members.filter { it.slug in refused }.map { it.name }
+        if (members.isNotEmpty() && (stop.all || stop.family || refusedNames.isEmpty())) {
+            onOff(familyTile, !stop.all && !stop.family)
+            return
+        }
+        // Like the rest of the screen, the words live in the code, not in string resources.
+        val (text, color) = if (members.isEmpty()) "No family members set up" to R.color.text_muted
+        else "${refusedNames.joinToString(", ")} can't reach this phone" to R.color.danger_text
+        familyTile.text = text
+        familyTile.setTextColor(ui.color(color))
     }
 
     private fun onOff(view: TextView, on: Boolean) {
@@ -382,7 +403,8 @@ class MainActivity : Activity() {
         // event the owner cares about out of a short window.
         val lines = BridgeLog.lastLines(this, RECENT_SCAN_LINES)
         val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
-        val items = lines.asReversed().asSequence().mapNotNull { recentItemFor(it, today = today) }.take(5).toList()
+        val members = Config.familyMembers(this)
+        val items = lines.asReversed().asSequence().mapNotNull { recentItemFor(it, today = today, members = members) }.take(5).toList()
         if (items.isEmpty()) {
             val empty = if (lines.isEmpty()) "Nothing yet." else "Nothing in the last ${lines.size} log lines."
             recentList.addView(ui.text(empty, 15f, R.color.text_muted).apply {

@@ -49,6 +49,17 @@
             android:name=".SetupActivity"
             android:exported="false" />
 
+        <!-- Open RustDesk on a family member's confirm prompt: no UI of its own, it only
+             makes sure the phone is unlocked and hands the tap to the service. Its own task and
+             no history, so it doesn't bring the owner screen forward before RustDesk opens. -->
+        <activity
+            android:name=".ConfirmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- specialUse, not dataSync: dataSync can't start from BOOT_COMPLETED and
              gets ~6 h a day on targetSdk 35+ (issue #1). -->
         <service

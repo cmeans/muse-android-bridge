@@ -114,6 +114,70 @@ class OwnerScreenTest {
         assertEquals("Opened zoom · asked by family", item("ok (family): launch zoom")?.text)
     }
 
+    private val alex = listOf(FamilyMember("m1", "Alex"))
+    private fun memberItem(text: String, members: List<FamilyMember> = alex) =
+        recentItemFor("2026-11-13 09:41:07 | $text", members = members)
+
+    @Test fun askedByNamesMember() {
+        assertEquals("your Muse", askedBy(Source(Channel.OWNER, null)))
+        assertEquals("Alex", askedBy(Source(Channel.FAMILY, FamilyMember("m1", "Alex"))))
+        assertEquals("your Muse", askedByTag("owner", alex))
+        assertEquals("family", askedByTag("family", alex))
+        assertEquals("Alex", askedByTag("family/m1", alex))
+        assertEquals("a family member", askedByTag("family/m2", alex))
+    }
+
+    @Test fun oldFamilyLinesStillRead() {
+        assertEquals("Opened Meet · asked by family", memberItem("ok (family): launch meet")?.text)
+    }
+
+    @Test fun memberLineNamed() {
+        assertEquals("Opened Meet · asked by Alex", memberItem("ok (family/m1): launch meet")?.text)
+    }
+
+    @Test fun removedMemberLine() {
+        assertEquals("Opened Meet · asked by a family member", memberItem("ok (family/m1): launch meet", emptyList())?.text)
+    }
+
+    @Test fun rateLimitedMemberLine() {
+        assertEquals("Refused, too many: Meet · Alex", memberItem("rate-limited (family/m1): launch meet")?.text)
+    }
+
+    @Test fun confirmAskedResult() {
+        val r = memberItem("confirm-asked (family/m1): launch rustdesk")!!
+        assertEquals("Asked to open RustDesk, waiting for you · Alex", r.text)
+        assertFalse(r.refused)
+    }
+
+    @Test fun declinedResult() {
+        val r = memberItem("declined (family/m1): launch rustdesk")!!
+        assertEquals("You said not now: RustDesk · Alex", r.text)
+        assertTrue(r.refused)
+    }
+
+    @Test fun notConfirmedResult() {
+        val r = memberItem("not-confirmed (family/m1): launch rustdesk (timeout)")!!
+        assertEquals("Not opened, no answer: RustDesk · Alex", r.text)
+        assertTrue(r.refused)
+    }
+
+    @Test fun pendingResult() {
+        val r = memberItem("pending (family/m1): launch rustdesk")!!
+        assertEquals("Refused, already waiting: RustDesk · Alex", r.text)
+        assertTrue(r.refused)
+    }
+
+    @Test fun rustdeskAndPromptWording() {
+        assertEquals("RustDesk: Alex is asking to open it", rustdeskRequestAnnouncement("Alex"))
+        assertEquals("Alex asked to open RustDesk", confirmPromptTitle("Alex"))
+        assertEquals("Only open it if you asked Alex for help.", confirmPromptText("Alex"))
+    }
+
+    @Test fun staleMemberLineStillChecksCommand() {
+        assertEquals("Ignored an old command: Meet · Alex", memberItem("dropped-stale (family/m1, 130s old): launch meet")?.text)
+        assertEquals("Ignored an old message · Alex", memberItem("dropped-stale (family/m1, 130s old): hello there")?.text)
+    }
+
     private val old = Setup("https://ntfy.example.com", "pilot-phone", "pilot-phone-phone")
 
     @Test fun serverOrDeviceChangeNeedsConfirm() {
@@ -138,5 +202,61 @@ class OwnerScreenTest {
     @Test fun usernameIsLoggedAsAnExcerpt() {
         val s = setupChangeFor(old, old.copy(username = "a b"), false)
         assertEquals("setup changed: username pilot-phone-phone -> a?b", s.logLine)
+    }
+
+    private val m1 = FamilyMember("m1", "Alex")
+
+    @Test fun memberAddedLogged() {
+        val s = setupChangeFor(old, old.copy(members = listOf(m1)), false)
+        assertEquals("setup changed: member m1 added", s.logLine)
+    }
+
+    @Test fun memberRenamedLogged() {
+        val a = old.copy(members = listOf(m1))
+        val s = setupChangeFor(a, a.copy(members = listOf(FamilyMember("m1", "Robin"))), false)
+        assertEquals("setup changed: member m1 renamed", s.logLine)
+        assertFalse(s.logLine!!.contains("Alex"))
+        assertFalse(s.logLine!!.contains("Robin"))
+    }
+
+    @Test fun memberRemovedLogged() {
+        val a = old.copy(members = listOf(m1))
+        assertEquals("setup changed: member m1 removed", setupChangeFor(a, old, false).logLine)
+    }
+
+    @Test fun memberPartsFollowTheOthersInOrder() {
+        val a = old.copy(members = listOf(m1, FamilyMember("m2", "Robin")))
+        val b = old.copy(
+            username = "other",
+            members = listOf(FamilyMember("m1", "Alexa"), FamilyMember("m3", "Robin")),
+        )
+        assertEquals(
+            "setup changed: username pilot-phone-phone -> other; member m1 renamed; member m3 added; member m2 removed",
+            setupChangeFor(a, b, false).logLine,
+        )
+    }
+
+    @Test fun memberAddedNeedsConfirm() {
+        assertTrue(setupChangeFor(old, old.copy(members = listOf(m1)), false).needsConfirm)
+        assertFalse(setupChangeFor(Setup("", "", ""), old.copy(members = listOf(m1)), false).needsConfirm)
+    }
+
+    @Test fun memberRenameOrRemoveNeedsNoConfirm() {
+        val a = old.copy(members = listOf(m1))
+        assertFalse(setupChangeFor(a, a.copy(members = listOf(FamilyMember("m1", "Robin"))), false).needsConfirm)
+        assertFalse(setupChangeFor(a, old, false).needsConfirm)
+    }
+
+    @Test fun addedMembersListsEachNewIdInOrder() {
+        val new = old.copy(members = listOf(FamilyMember("m2", "Robin"), m1, FamilyMember("m3", "Alexa")))
+        assertEquals(listOf("m2", "m1", "m3"), addedMembers(old, new))
+        assertTrue(setupChangeFor(old, new, false).needsConfirm)
+    }
+
+    @Test fun addedMembersIgnoresRenames() {
+        val a = old.copy(members = listOf(m1))
+        val b = a.copy(members = listOf(FamilyMember("m1", "Robin"), FamilyMember("m2", "Alexa")))
+        assertEquals(listOf("m2"), addedMembers(a, b))
+        assertTrue(setupChangeFor(a, b, false).needsConfirm)
     }
 }

@@ -49,6 +49,12 @@ object Receipts {
     fun cannotLaunch(c: Command.Launch) = "err ${c.text} cannot-launch"
     /** Announced and sent, but the app wasn't seen in front within 5 s; it may still appear later. */
     fun blocked(c: Command.Launch) = "err ${c.text} blocked"
+    /** The person it was shown to tapped "Not now"; nothing was launched. */
+    fun declined(c: Command.Launch) = "err ${c.text} declined"
+    /** No one confirmed in time, or the bridge restarted while it waited; nothing was launched. */
+    fun notConfirmed(c: Command.Launch) = "err ${c.text} not-confirmed"
+    /** Another confirm request is already waiting; this one was refused and nothing was done. */
+    fun pending(c: Command.Launch) = "err ${c.text} pending"
     /** Too many of this kind of command on this channel lately (§3); nothing was done. */
     fun rateLimited(c: Command) = "err ${c.text} rate-limited"
 

@@ -1,5 +1,10 @@
 # ntfy provisioning — pilot device `pilot-phone`
 
+> **Protocol 0.5 (2026-11-16):** the family channel is now one topic per
+> member, and the shared `mab-pilot-phone-family` topic is retired. The
+> sections below up to "Still to provision" record the 0.4 provisioning as it
+> was done; "Family members (protocol 0.5)" says what to do now.
+
 > A record of the reference deployment's provisioning, written as a worked
 > example. Device names, users, hosts and credential variable names are
 > generic examples (the live server uses its own); file paths are the
@@ -9,7 +14,7 @@ Server: the server operator's existing ntfy, in a container on their home server
 Provisioned 2026-11-11 with the maintainer's go. No service restart was
 needed or performed — user/ACL changes are live database operations.
 
-## Principals and grants (per PROTOCOL.md §3)
+## Principals and grants (per PROTOCOL.md §3, as of 0.4)
 
 | Principal | mab-pilot-phone-owner | mab-pilot-phone-family | mab-pilot-phone-ack |
 |---|---|---|---|
@@ -33,10 +38,55 @@ token because grants attach to the user.
 - phone user reads family topic → 200; reads the server operator's alert topic → 403 (no grant)
 - muse token reads ack topic → receives `ok launch meet`
 
+## Family members (protocol 0.5)
+
+For each phone and each family member, in this order. One topic the phone's
+user can't read makes ntfy refuse the whole subscription (`403`), which would
+cut the owner channel off too; the bridge's per-topic fallback works around
+that, but the order below keeps it from happening. Example: device
+`pilot-phone`, member slug `m1` (a neutral id, not a name; see PROTOCOL §2.1),
+ntfy user `fam-m1`. Every grant names the exact topic, never a wildcard:
+`mab-pilot-phone-family-m1*` would also cover `…-family-m10`.
+
+1. **Grant first.**
+   - Create the person's ntfy user if it doesn't exist (one user per person,
+     shared across the phones they help).
+   - `ntfy access fam-m1 mab-pilot-phone-family-m1 write-only`
+   - `ntfy access fam-m1 mab-pilot-phone-ack read-only`
+   - `ntfy access pilot-phone-phone mab-pilot-phone-family-m1 read-only`
+2. **Then add the member** in the phone's setup (slug `m1` and a display
+   name; the name stays on the phone). Adding a member to a phone that's
+   already set up goes through the owner's confirm step.
+3. **Check:** `fam-m1` publishes `launch meet` to its topic → 200 and the
+   phone announces it with the member's name; `fam-m1` publishing to
+   `mab-pilot-phone-owner` or another member's topic → 403; the phone user
+   reads the new topic → 200.
+
+**Removing a member: phone first.** Remove the member in the phone's setup,
+then revoke the grants (`ntfy access fam-m1 mab-pilot-phone-family-m1 deny`,
+or `ntfy access --reset fam-m1 mab-pilot-phone-family-m1`, and the phone
+user's read with `ntfy access --reset <phone-user> <member-topic>`).
+Revoking the phone's read first would leave that member shown
+on the phone as unreachable until it's removed.
+
+**Retiring the shared topic (once per phone, not per member; D2).** Phone
+first: move the phone to the 0.5 build, which never reads
+`mab-pilot-phone-family` (so the family channel is silent on the phone until
+a member is added). Then grant and add each family user's member topic (the
+steps above). Only after both, revoke every family user's grants on the
+shared topic, and the phone user's read on it
+(`ntfy access --reset <user> mab-pilot-phone-family`). Revoking before the
+phone has the new build would make the phone's subscription fail with `403`,
+and revoking before a family user's member topic is granted and added would
+cut that person off. Afterwards a message sent to
+the shared topic reaches nobody and gets no receipt.
+
+Then re-run the F1 drill below per member, on that member's topic.
+
 ## Still to provision at later phases
 
-- A family helper as a family publisher (write family / read ack) when
-  their phone or their helper access is set up.
+- A family helper as a family member (steps above) when their phone or
+  their helper access is set up.
 - `mab-helper-pixel-*` and `mab-alex-phone-*` topic families at their
   phases.
 - The phone-side subscription: on the pilot phone, the ntfy app (or the
@@ -44,21 +94,25 @@ token because grants attach to the user.
   https://ntfy.example.com — password handed over at setup time, never
   written here.
 
-## F1 revocation drill (2026-11-11, PASSED)
+## F1 revocation drill (2026-11-11, PASSED; per member under protocol 0.5)
 
 Throwaway publisher `drill-pub` (write-only on `mab-pilot-phone-family`,
-own token), run entirely against the pilot topics:
+own token), run entirely against the pilot topics. The drill was run on the
+shared topic. Under 0.5, run it per member with the member's topic in place
+of the shared one (`mab-pilot-phone-family-m1`), and check that the other
+members' topics and the owner channel still work after the `deny`:
 
 1. Publish with drill token → **200**.
-2. `ntfy access drill-pub mab-pilot-phone-family deny` (the revocation move).
+2. `ntfy access drill-pub mab-pilot-phone-family deny` (the revocation move;
+   under 0.5, on the member's topic).
 3. Publish again with the **same, still-valid token** → **403**. ACL denial
    is immediate and beats token validity — revoking a family member does
    not require chasing their token.
 4. Cleanup: drill user removed entirely, token file deleted, user list
    verified clean; publish attempt afterwards → **401**.
 
-Standing revocation procedure for a real family publisher: apply `deny`
-on their bridge topics first (instant stop), then revoke their tokens /
+Standing revocation procedure for a real family member: apply `deny`
+on their member topic (and the ack topic) first (instant stop), then revoke their tokens /
 remove the user at leisure. Test-plan F1 is satisfied for the ACL
 mechanism; it will be re-run with the real family credentials during
 Phase 4 provisioning.

@@ -14,13 +14,13 @@ sealed interface Decision {
     data class DropDuplicate(val log: String) : Decision
     /** [id]: the rejected message's id, for its receipt (0.4). */
     data class Reject(val receipt: String, val id: String, val log: String = "") : Decision
-    data class Run(val command: Command, val channel: Channel) : Decision
+    data class Run(val command: Command, val source: Source) : Decision
 }
 
 const val TTL_SECONDS = 120L
 
 /**
- * The checks of PROTOCOL.md §5, in order: command topic, freshness (§2.3,
+ * The checks of PROTOCOL.md §5, in order: command topic (the owner's or a member's), freshness (§2.3,
  * either direction), dedup (recorded before STOP is read), exact registry
  * match, channel enabled.
  */
@@ -30,14 +30,16 @@ class Gate(
     private val seen: SeenStore,
     private val clockMs: () -> Long,
     private val stop: () -> StopState,
+    private val members: () -> List<FamilyMember>,
 ) {
     fun decide(msg: IncomingMessage): Decision {
         val excerpt = logExcerpt(msg.body)
         // 0.4 echoes the id in the receipt, so an id outside the grammar gets no receipt at all.
         if (!isValidMessageId(msg.id)) return Decision.Ignore("ignored: bad message id: $excerpt")
-        val channel = channelForTopic(msg.topic, slug)
+        val source = sourceForTopic(msg.topic, slug, members())
             ?: return Decision.Ignore("ignored: topic ${logExcerpt(msg.topic)}: $excerpt")
-        val name = channel.name.lowercase()
+        val channel = source.channel
+        val tag = source.logTag()
 
         val nowMs = clockMs()
         val nowSec = nowMs / 1000
@@ -46,26 +48,26 @@ class Gate(
             // Recorded as seen too: a replayed copy of a message already handled, or a
             // second copy of a stale one, is a duplicate whose first receipt stands (§6).
             if (!seen.markIfNew(msg.id, nowMs)) {
-                return Decision.DropDuplicate("duplicate ($name, replayed) ${logExcerpt(msg.id)}: $excerpt")
+                return Decision.DropDuplicate("duplicate ($tag, replayed) ${logExcerpt(msg.id)}: $excerpt")
             }
             val age = if (msg.timeSec <= nowSec) "${nowSec - msg.timeSec}s old" else "${msg.timeSec - nowSec}s ahead"
             return Decision.DropStale(
                 Receipts.staleOf(msg.body, channel, registry),
                 msg.id,
-                "dropped-stale ($name, $age): $excerpt",
+                "dropped-stale ($tag, $age): $excerpt",
             )
         }
         if (!seen.markIfNew(msg.id, nowMs)) {
-            return Decision.DropDuplicate("duplicate ($name) ${logExcerpt(msg.id)}: $excerpt")
+            return Decision.DropDuplicate("duplicate ($tag) ${logExcerpt(msg.id)}: $excerpt")
         }
 
         val command = parseCommand(msg.body, channel, registry)
-            ?: return Decision.Reject(Receipts.unknown(), msg.id, "unknown-command ($name): $excerpt")
+            ?: return Decision.Reject(Receipts.unknown(), msg.id, "unknown-command ($tag): $excerpt")
 
         val s = stop()
         if (s.all || (channel == Channel.FAMILY && s.family)) {
-            return Decision.Reject(Receipts.disabled(command), msg.id, "disabled ($name): ${command.text}")
+            return Decision.Reject(Receipts.disabled(command), msg.id, "disabled ($tag): ${command.text}")
         }
-        return Decision.Run(command, channel)
+        return Decision.Run(command, source)
     }
 }

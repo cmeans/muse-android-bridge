@@ -18,7 +18,7 @@ deployment must work for any Muse user with an Android phone.
 |---|---|
 | **Phone owner** | Owns the phone, the Muse account, and every permission. Asks for help in their own words, performs the few taps Android reserves for a human finger, can stop everything from the phone. |
 | **Owner's Muse** | The operator. Hears the request, diagnoses first with the paired-phone data it already has (notifications, battery, network, texts), and only escalates to bridge commands and screen control when diagnosis says they're needed. |
-| **Family publishers** (family helpers) | Holders of the family channel: launch-only bridge commands for when they're already helping. One of them, the server operator, additionally runs the shared family infrastructure and their own controller for the test phases and for helping directly. |
+| **Family publishers** (family helpers) | Holders of a family channel (one topic per member since protocol 0.5, so the phone can name who asked): launch-only bridge commands for when they're already helping. A family `launch rustdesk` waits for the owner's tap on the phone before RustDesk opens. One of them, the server operator, additionally runs the shared family infrastructure and their own controller for the test phases and for helping directly. |
 
 In the reference deployment, the maintainer (who approves design and
 rollout decisions) is also the server operator.
@@ -30,7 +30,7 @@ rollout decisions) is also the server operator.
 | Component | Job |
 |---|---|
 | Muse app | The owner's front door: voice or text conversation with their Muse. |
-| Bridge executor (Tasker pilot → native `muse-android-bridge` app) | Implements `PROTOCOL.md`: subscribes to the two command topics, executes the whitelist, announces + logs, provides the on-phone STOP controls. |
+| Bridge executor (Tasker pilot → native `muse-android-bridge` app) | Implements `PROTOCOL.md`: subscribes to the owner topic plus one topic per family member, executes the whitelist, announces + logs, provides the on-phone STOP controls. |
 | RustDesk (host mode) | The screen-and-control endpoint. Service stays OFF until the owner starts it — starting it *is* the request for a control session. |
 
 ### 3.2 Shared family infrastructure (the server operator's home server)
@@ -86,7 +86,7 @@ only in **who operates** and **which controller** connects:
 | | **Family-help path** | **Self-help path** |
 |---|---|---|
 | Operator | A family helper (personally, or the server operator's Muse) | The owner, via their own Muse |
-| Bridge channel used | Family (launch-only) | Owner (full menu) |
+| Bridge channel used | Family (launch-only; `launch rustdesk` needs the owner's tap on the phone) | Owner (full menu) |
 | Controller | An LXC on the server operator's home server (for the server operator's Muse) or the helper's own laptop (human driving) | The owner's Muse's own environment |
 | Works from | Anywhere with internet — the server and the server operator's controller live at the server operator's home and are always on; the *helpers* do not need to be home | Anywhere the owner is |
 | Phone-side requirement | The owner starts the RustDesk service only after asking a family helper for help themselves | The owner starts the RustDesk service only after asking their own Muse for help |

@@ -1,6 +1,10 @@
 # Tasker executor — build sheet (pilot: pilot-phone)
 
-> Frozen research (2026-11-12): the native app replaces this executor. Where
+> Frozen research (2026-11-12): the native app replaces this executor. It also
+> predates protocol 0.5: it subscribes to the retired shared family topic
+> `mab-pilot-phone-family` (so do `MAB_Probe.prj.xml` and
+> `MAB_Subscribe_Tasks.tsk.xml` in this folder) and opens a family RustDesk
+> launch with no confirm tap. Reference only; not updated. Where
 > this sheet differs from PROTOCOL.md (v0.3, and 0.4's receipt ids, which this
 > sheet never had) (check order, receipt wording, rate limits, launch checks),
 > PROTOCOL wins.

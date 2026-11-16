@@ -1,6 +1,13 @@
 # muse-android-bridge — Wire Protocol
 
-**Version:** 0.4 (DRAFT, 2026-11-14). 0.4 adds the command's message id
+**Version:** 0.5 (DRAFT, 2026-11-16). 0.5 gives each family member their
+own topic, so the phone knows who asked (§2.1, §3), names that member in
+announcements (§5 step 4), and holds a family `launch rustdesk` until the
+owner taps Open on the phone (§5, confirm flow); it adds the `declined`,
+`not-confirmed` and `pending` receipts (§6) and retires the shared family
+topic (§9); the maintainer approved the approach on 2026-11-15.
+
+0.4 adds the command's message id
 to every receipt (§6), so a publisher can match each receipt to its
 command exactly; the maintainer decided it on 2026-11-13 (mcp-phone-commands
 design Q1), reversing 0.3's no-ids rule; and the phone's clock to `status
@@ -25,7 +32,7 @@ extend it unilaterally.
 
 ## 1. Purpose and non-goals
 
-Give a Muse agent (and, on a separate channel, designated family members) the
+Give a Muse agent (and, on separate per-member channels, designated family members) the
 ability to ask an Android phone to perform a small, fixed set of actions —
 initially, launching apps — that Muse's paired-phone commands do not cover.
 
@@ -50,11 +57,31 @@ operator's existing instance; `auth-default-access: deny-all`).
 | Topic | Direction | Purpose |
 |---|---|---|
 | `mab-<device>-owner` | agent → phone | Owner channel: full command registry (§4.1) |
-| `mab-<device>-family` | family → phone | Family channel: launch-only subset (§4.2) |
+| `mab-<device>-family-<member>` | one family member → phone | Family channel, one topic per member: launch-only subset (§4.2) |
 | `mab-<device>-ack` | phone → publishers | Execution receipts (§6) |
 
 `<device>` is a short lowercase slug chosen at provisioning (`pilot-phone`,
 `helper-pixel`, `alex-phone`, …). Topic names use hyphens only.
+
+`<member>` is a short slug given at provisioning, which the owner types when
+adding the member on the phone (`m1`, `helper-a`): lowercase letters and
+digits in hyphen-separated words. It is a neutral id, never a person's name: it travels in every
+message's topic field and sits in the server's ACL (§2.2 keeps personal
+information out of messages). The member's name lives only in the phone's
+setup, which uses it in announcements. Rules:
+
+- The whole topic name is at most 64 characters (ntfy's limit,
+  `^[-_A-Za-z0-9]{1,64}$`), so a long device slug leaves a short member slug.
+- The slug may not contain the word `family`, and its last word may not be
+  `owner` or `ack`. That keeps a member topic from equalling any phone's
+  owner, ack or former shared family topic, and from equalling another
+  device's member topic.
+- A phone has at most 8 members.
+
+The user who writes a member topic is the one whose messages the phone
+attributes to that member; the server's ACL (§3) is what makes that true.
+The former shared topic `mab-<device>-family` is retired (§9): the phone no
+longer reads it, and anything sent there gets no receipt.
 
 ### 2.2 Message format
 
@@ -62,7 +89,7 @@ Publish with ntfy's JSON API. The **message body is exactly one command** from
 the registry — lowercase, one verb, one argument, single space:
 
 ```
-{"topic": "mab-pilot-phone-family", "message": "launch meet"}
+{"topic": "mab-pilot-phone-family-m1", "message": "launch meet"}
 ```
 
 No free text is ever valid. A body that does not match a registry entry
@@ -93,21 +120,33 @@ The ntfy server's ACL is the enforcement point. Per phone, provision:
 
 | Principal | Access |
 |---|---|
-| `<device>-phone` user | read `mab-<device>-owner`, read `mab-<device>-family`, write `mab-<device>-ack` — nothing else |
+| `<device>-phone` user | read `mab-<device>-owner`, read each member's `mab-<device>-family-<member>`, write `mab-<device>-ack` — nothing else |
 | Owner's agent token | write `mab-<device>-owner`, read `mab-<device>-ack` |
-| Each family publisher | write `mab-<device>-family`, read `mab-<device>-ack` |
+| Each family member's user (one user per person, shared across the phones they help) | write their own `mab-<device>-family-<member>`, read `mab-<device>-ack` |
 | Server admin (server operator) | full access (server role, not a bridge credential) |
+
+Every grant names its exact topic, never a wildcard: `…-family-m1*` would
+also cover `…-family-m10`. The phone's user must be able to read every member
+topic it is set up with. ntfy answers `403` to a whole subscription when any
+one topic in it is unreadable, so a member topic the phone can't read would
+cut the owner channel off too; provision the grant before adding the member
+on the phone (`server/ntfy-provisioning.md`). The bridge works around a
+refused member by asking about each member topic alone and reading the ones
+it may (re-asking every 15 minutes and at each reconnect), but that is a
+fallback, not the plan.
 
 Rules:
 
 - The phone's credential is read-mostly by design: stealing it lets an
   attacker *watch* commands and *forge receipts*, never issue commands.
 - A leaked publisher token can only fire registry commands on one channel of
-  one phone. Worst case is apps opening and the phone ringing at full alarm
+  one phone (for a family member, on that member's topic). Worst case is apps opening and the phone ringing at full alarm
   volume, repeatedly, until the owner flips a STOP switch; the per-channel
   rate limits (at most 3 `ring find` and 10 launches per 10 minutes) bound
   how often. Revocation = rotate that token / disable that user; the other
-  channel is unaffected.
+  channels are unaffected. To cut off one family member, `deny` their user on
+  their topic (and on the ack topic), and rotate their token or remove the
+  user; the owner channel and every other member are unaffected.
 - Credentials live with the publishers (agent secret storage, family
   members' password managers). The phone's owner never handles, sees, or
   types a credential for the owner channel.
@@ -130,7 +169,7 @@ Rules:
 
 | Command | Action |
 |---|---|
-| `launch <app>` | Same as owner channel |
+| `launch <app>` | Same as owner channel, except `launch rustdesk`: the owner confirms it on the phone before it opens (§5, confirm flow) |
 | `ring find` | Same as owner channel |
 
 Family channel has **no** bootstrap/update/status commands. Installing
@@ -173,8 +212,10 @@ On receiving a message, an executor MUST:
    announcement or action, and the refused command doesn't count.
 4. Announce on the phone *before* acting: a persistent visual banner plus
    spoken announcement where the executor supports it, naming the action and
-   the channel — e.g. "Opening Meet: asked by family." The phone's owner
-   must always be able to tell, afterwards, who asked for what.
+   who asked — e.g. "Opening Meet: asked by Alex." A family command is
+   announced with the name the owner gave that member on the phone (§2.1),
+   so the phone's owner must always be able to tell, afterwards, who asked
+   for what.
    The owner channel is announced as "your Muse" ("Opening Meet: asked by
    your Muse"), since that's who the owner's channel speaks for.
    `status report` needn't be announced: it only reads and replies (it is
@@ -184,7 +225,45 @@ On receiving a message, an executor MUST:
 7. Publish a receipt (§6).
 
 Executors MUST NOT chain commands, retry a failed command on their own, or
-act on messages from any topic other than the two command topics.
+act on messages from any topic other than the owner topic and the member
+topics the phone is set up with (§2.1). A message on the former shared family
+topic, or on a removed member's topic, is not a command.
+
+**Confirm flow (family `launch rustdesk`).** A `launch rustdesk` on a member
+topic is not acted on at step 5 until the owner says yes on the phone.
+Steps 1 to 3 run as usual, and the command counts toward the family rate
+limit. Then:
+
+a. The launch refusals run first, with their usual receipts (`not-installed`,
+   `cannot-launch`, `cannot-announce`; the last also covers the notification
+   channel the prompt needs). Nothing is announced or prompted.
+b. The phone announces "RustDesk: Alex is asking to open it" (not "Opening":
+   nothing opens yet) and posts a prompt with two actions, Open RustDesk and
+   Not now. Open needs the phone unlocked.
+c. Open runs the usual launch path (the three refusals again, since any can
+   have changed during the wait; then the announcement "Opening RustDesk:
+   asked by Alex", the launch and the launch check) and answers as it does
+   today (§6). Not now answers `declined`. No answer within **2 minutes** of
+   the phone handling the command answers `not-confirmed`; so does a tap on
+   Open or Not now that comes after that deadline. A swiped-away prompt is
+   not an answer: the request waits for its deadline.
+d. Only one request waits at a time. A second family `launch rustdesk` while
+   one is pending gets `pending` and no second prompt. STOP (family or all)
+   while one is pending withdraws it and answers `disabled`; so does an Open
+   tapped while STOP is on. Past the deadline, STOP answers `not-confirmed`
+   like a late tap (c).
+e. The pending request is kept across a restart: the next start withdraws it
+   and answers `not-confirmed`. A setup save that changes the server or the
+   device name withdraws it at once instead, before the new setup is written,
+   and answers `not-confirmed` on the old server and ack topic. That receipt
+   is sent once: if the send fails (no network, or the old server refuses
+   it), it is lost and the phone logs `receipt failed`; if the app is killed before it goes, it is lost
+   with no trace beyond the `not-confirmed … (setup changed)` line. Any other
+   setup save restarts a running bridge, which answers a waiting request with
+   `not-confirmed` then, on the unchanged server; a stopped bridge answers it
+   at its next start.
+
+There is exactly one receipt per message, sent when the outcome is known (§6).
 
 ## 6. Receipts (`mab-<device>-ack`)
 
@@ -196,14 +275,17 @@ logged, with no receipt. The complete list:
 
 ```
 ok <command> id=<id>                       e.g. ok launch meet id=Ab12Cd34Ef56
-err <command> not-installed id=<id>        launch only; nothing is announced
-err <command> disabled id=<id>             channel off by STOP (§7)
+err <command> not-installed id=<id>        launch only; nothing is announced (except on a confirmed family RustDesk launch, after the request was announced)
+err <command> disabled id=<id>             channel off by STOP (§7); also a family RustDesk request withdrawn by STOP while waiting for the owner
 err <command> not-implemented id=<id>      bootstrap rustdesk / update rustdesk until Phase 3
 err <command> cannot-announce id=<id>      the phone can't show the announcement (§5.4), so nothing was done
 err <command> failed id=<id>               the action couldn't run (e.g. no sound to ring); not retried
-err <command> cannot-launch id=<id>        launch only; "Display over other apps" is off, so Android would block it; nothing was done
+err <command> cannot-launch id=<id>        launch only; "Display over other apps" is off, so Android would block it; nothing was done (except on a confirmed family RustDesk launch, after the request was announced)
 err <command> blocked id=<id>              launch only; announced and sent, but the app wasn't seen in front within 5 s; it may still appear (don't resend at once)
 err <command> rate-limited id=<id>         over the channel's limit (§3): 3 ring find or 10 launches per 10 minutes; nothing was done
+err <command> declined id=<id>             family launch rustdesk only; the owner tapped Not now (§5, confirm flow); nothing was opened
+err <command> not-confirmed id=<id>        family launch rustdesk only; no tap within 2 minutes, a tap or STOP after that, the bridge restarted while waiting, or a setup save moved the server or device name (answered on the old ones); nothing was opened
+err <command> pending id=<id>              family launch rustdesk only; another request is already waiting for the owner; no second prompt
 err unknown-command id=<id>                never echoes the body
 dropped-stale <command> id=<id>            stale and a registry command on its channel
 dropped-stale id=<id>                      stale and not a registry command
@@ -214,6 +296,17 @@ ok status report battery=<n> version=<app version> protocol=<version> owner=<on|
 seconds, so a publisher can compare it with the receipt's ntfy time and
 warn about a phone clock that's off (§2.3's freshness check uses that
 clock).
+
+A family `launch rustdesk` that reaches the confirm step (§5) answers when the
+outcome is known, not when it arrives. That is at most about 2 minutes after
+the phone handles it, and the phone accepts a command up to 2 minutes old
+(§2.3), so a publisher can wait up to about 4 minutes. After deep sleep it can
+be later: the deadline is noticed at the next line read from the server, up to
+about 45 s late on a live connection, and on a dead connection not until the
+phone next wakes. If the bridge was stopped while a request waited, the answer
+comes at its next start, or at once from a setup save that changes the server
+or device name (§5e; sent once, and lost with no network or if the app is
+killed at that moment). Publishers must not resend while waiting.
 
 A duplicate gets no receipt, including a replayed copy of a message already
 handled that is now older than 120 s (its first receipt stands).
@@ -250,7 +343,7 @@ failed); the log says so and why.
 The executor MUST provide, reachable by the phone's owner without help:
 
 - A visible indicator that the bridge is installed and which channels are on.
-- A **STOP control** that disables the family channel immediately, and a
+- A **STOP control** that disables the family channel (every member's topic) immediately, and a
   separate control that disables all channels. State survives reboot.
 - The on-phone log (§5.6), readable on the device.
 
@@ -282,6 +375,21 @@ This document is versioned. Changes to the command registry or message
 format require a version bump here first; executors and publishers then
 update to match. Executors record the protocol version they implement and
 report it in `status report` receipts.
+
+0.5 is additive for publishers on the owner channel. The shared family topic
+`mab-<device>-family` is retired: the 0.5 build no longer reads it, so the
+family channel is silent on a phone until a member is added (§2.1). Its ACL
+grants are revoked only after the phone runs the 0.5 build (or the `403` rule
+in §3 would cut it off), and each family user has their member topic granted
+and added on the phone. A message sent there afterwards reaches nobody and
+gets no receipt. A family
+publisher must know which topic its credential writes to. A family `launch
+rustdesk` can now answer up to about 4 minutes after publishing (2 minutes of
+waiting from when the phone handles it, which can itself be up to 2 minutes
+after publishing; a little longer after deep sleep), or at the bridge's next
+start if it was stopped meanwhile. The three new receipt details (`declined`,
+`not-confirmed`, `pending`) are unknown to a 0.4 parser, which would report
+them as unrecognized.
 
 0.4 is not compatible with 0.3 in either direction: a 0.3 parser rejects a
 receipt ending in `id=`, and a 0.4 parser rejects one without it. A

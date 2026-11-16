@@ -56,9 +56,9 @@ class CommandTest {
     }
 
     @Test fun topicMustMatchExactly() {
-        assertNull(channelForTopic("mab-test-phone-owner-x", "test-phone"))
-        assertNull(channelForTopic("mab-test-phone-owne", "test-phone"))
-        assertNull(channelForTopic("xmab-test-phone-family", "test-phone"))
+        assertNull(sourceForTopic("mab-test-phone-owner-x", "test-phone", emptyList())?.channel)
+        assertNull(sourceForTopic("mab-test-phone-owne", "test-phone", emptyList())?.channel)
+        assertNull(sourceForTopic("xmab-test-phone-family", "test-phone", emptyList())?.channel)
     }
 
     @Test fun pilotRegistryMatchesVerifiedPackages() {
@@ -79,9 +79,9 @@ class CommandTest {
     @Test fun topicsPerChannel() {
         assertEquals("mab-test-phone-owner", OWNER.topic("test-phone"))
         assertEquals("mab-test-phone-family", FAMILY.topic("test-phone"))
-        assertEquals(OWNER, channelForTopic("mab-test-phone-owner", "test-phone"))
-        assertEquals(FAMILY, channelForTopic("mab-test-phone-family", "test-phone"))
-        assertNull(channelForTopic("mab-test-phone-ack", "test-phone"))
-        assertNull(channelForTopic("mab-other-owner", "test-phone"))
+        assertEquals(OWNER, sourceForTopic("mab-test-phone-owner", "test-phone", emptyList())?.channel)
+        assertEquals(FAMILY, sourceForTopic("mab-test-phone-family-m1", "test-phone", listOf(FamilyMember("m1", "Alex")))?.channel)
+        assertNull(sourceForTopic("mab-test-phone-ack", "test-phone", emptyList())?.channel)
+        assertNull(sourceForTopic("mab-other-owner", "test-phone", emptyList())?.channel)
     }
 }

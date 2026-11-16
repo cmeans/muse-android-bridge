@@ -9,17 +9,19 @@ below. Step 2 is implemented and awaits its long-run device evidence._
 Replace the Tasker pilot with one small Android app that implements
 `PROTOCOL.md` exactly:
 
-- subscribe to the device's owner and family ntfy topics;
+- subscribe to the device's owner topic and one topic per family member
+  (protocol 0.5; the shared family topic is retired);
 - accept only exact registry commands;
 - apply the 120-second TTL, 24-hour message-ID dedup, exact registry
-  match and STOP gates, in that order (PROTOCOL v0.4 §5; the Tasker pilot
+  match and STOP gates, in that order (PROTOCOL v0.5 §5; the Tasker pilot
   checked STOP first);
 - announce every accepted action that changes something on the phone
   (`status report` isn't announced, PROTOCOL §5 step 4);
 - launch the target app, or perform `ring find`;
 - post a receipt to the ack topic and keep a local log;
 - restart after reboot and expose a simple owner screen with setup,
-  service state, recent log, and separate family/all STOP switches.
+  service state, recent log, and separate family/all STOP switches. A family
+  `launch rustdesk` waits for the owner's tap on the phone (protocol 0.5).
 
 Non-goals for v1: no accessibility automation, no general intent or
 shell runner, no screen control, no credential/PIN entry, no purchases,

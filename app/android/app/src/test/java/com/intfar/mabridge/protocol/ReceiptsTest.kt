@@ -19,6 +19,13 @@ class ReceiptsTest {
         )
     }
 
+    @Test fun confirmReceipts() {
+        val c = Command.Launch("rustdesk")
+        assertEquals("err launch rustdesk declined", Receipts.declined(c))
+        assertEquals("err launch rustdesk not-confirmed", Receipts.notConfirmed(c))
+        assertEquals("err launch rustdesk pending", Receipts.pending(c))
+    }
+
     @Test fun statusTimeIsWholeSeconds() {
         // milliseconds are dropped, not rounded: 999 ms past the second is still that second
         assertTrue(

@@ -4,6 +4,8 @@ import android.app.AppOpsManager
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
+import com.intfar.mabridge.protocol.FamilyMember
+import com.intfar.mabridge.protocol.decodeMembers
 import com.intfar.mabridge.protocol.isValidServer
 import com.intfar.mabridge.protocol.isValidSlug
 
@@ -22,6 +24,19 @@ object Config {
 
     fun username(ctx: Context): String =
         prefs(ctx).getString("username", "")!!
+
+    /** The family members, as stored; a bad stored line is dropped (see `decodeMembers`). */
+    fun familyMembers(ctx: Context): List<FamilyMember> =
+        decodeMembers(prefs(ctx).getString("family_members", "")!!, deviceSlug(ctx))
+
+    /**
+     * The member slugs whose topics the server refused on the bridge's last subscribe (design §2),
+     * in setup order: the service writes it, the owner screen reads it. Empty while all are read.
+     */
+    const val PREF_REFUSED_MEMBERS = "refused_members"
+
+    fun refusedMembers(ctx: Context): List<String> =
+        prefs(ctx).getString(PREF_REFUSED_MEMBERS, "")!!.split(',').filter { it.isNotEmpty() }
 
     fun ackTopic(ctx: Context) = "mab-${deviceSlug(ctx)}-ack"
 

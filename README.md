@@ -16,7 +16,9 @@ Two help paths share one phone deployment:
 - **Self-help** — the owner asks their own Muse (owner channel, full menu,
   controller in that Muse's own environment).
 - **Family help** — designated family members launch apps for the owner
-  (family channel, launch-only) or drive via their own controller.
+  (family channel, launch-only, one topic per member; a family RustDesk
+  launch waits for the owner's tap on the phone) or drive via their own
+  controller.
 
 ## Documents
 
