@@ -14,13 +14,13 @@ sealed interface Decision {
     data class DropDuplicate(val log: String) : Decision
     /** [id]: the rejected message's id, for its receipt (0.4). */
     data class Reject(val receipt: String, val id: String, val log: String = "") : Decision
-    data class Run(val command: Command, val channel: Channel) : Decision
+    data class Run(val command: Command, val source: Source) : Decision
 }
 
 const val TTL_SECONDS = 120L
 
 /**
- * The checks of PROTOCOL.md §5, in order: command topic, freshness (§2.3,
+ * The checks of PROTOCOL.md §5, in order: command topic (the owner's or a member's), freshness (§2.3,
  * either direction), dedup (recorded before STOP is read), exact registry
  * match, channel enabled.
  */
@@ -30,14 +30,16 @@ class Gate(
     private val seen: SeenStore,
     private val clockMs: () -> Long,
     private val stop: () -> StopState,
+    private val members: () -> List<FamilyMember>,
 ) {
     fun decide(msg: IncomingMessage): Decision {
         val excerpt = logExcerpt(msg.body)
         // 0.4 echoes the id in the receipt, so an id outside the grammar gets no receipt at all.
         if (!isValidMessageId(msg.id)) return Decision.Ignore("ignored: bad message id: $excerpt")
-        val channel = channelForTopic(msg.topic, slug)
+        val source = sourceForTopic(msg.topic, slug, members())
             ?: return Decision.Ignore("ignored: topic ${logExcerpt(msg.topic)}: $excerpt")
-        val name = channel.name.lowercase()
+        val channel = source.channel
+        val name = source.logTag()
 
         val nowMs = clockMs()
         val nowSec = nowMs / 1000
@@ -66,6 +68,6 @@ class Gate(
         if (s.all || (channel == Channel.FAMILY && s.family)) {
             return Decision.Reject(Receipts.disabled(command), msg.id, "disabled ($name): ${command.text}")
         }
-        return Decision.Run(command, channel)
+        return Decision.Run(command, source)
     }
 }

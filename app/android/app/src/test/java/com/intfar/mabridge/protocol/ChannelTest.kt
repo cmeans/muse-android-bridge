@@ -2,6 +2,7 @@ package com.intfar.mabridge.protocol
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -75,5 +76,31 @@ class ChannelTest {
             "https://ntfy example.com", "https://ntfy.example.com?x=1", "https://user@ntfy.example.com", "ftp://ntfy.example.com")) {
             assertFalse(s, isValidServer(s))
         }
+    }
+
+    private val m1 = FamilyMember("m1", "Alex")
+    private val m2 = FamilyMember("m2", "Sam")
+
+    @Test fun memberTopicResolves() {
+        assertEquals(Source(Channel.FAMILY, m1), sourceForTopic("mab-p-family-m1", "p", listOf(m1)))
+        assertEquals(Source(Channel.OWNER, null), sourceForTopic("mab-p-owner", "p", listOf(m1)))
+    }
+
+    @Test fun sharedFamilyTopicRetired() {
+        assertNull(sourceForTopic("mab-p-family", "p", listOf(m1)))
+    }
+
+    @Test fun removedMemberTopicIsIgnored() {
+        assertNull(sourceForTopic("mab-p-family-m2", "p", listOf(m1)))
+    }
+
+    @Test fun logTagNamesTheSlugNotTheName() {
+        assertEquals("owner", Source(Channel.OWNER, null).logTag())
+        assertEquals("family/m1", Source(Channel.FAMILY, m1).logTag())
+    }
+
+    @Test fun subscribeTopicsOrder() {
+        assertEquals(listOf("mab-p-owner", "mab-p-family-m1", "mab-p-family-m2"), subscribeTopics("p", listOf(m1, m2)))
+        assertEquals(listOf("mab-p-owner"), subscribeTopics("p", emptyList()))
     }
 }

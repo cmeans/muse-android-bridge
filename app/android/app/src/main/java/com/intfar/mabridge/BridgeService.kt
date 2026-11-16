@@ -36,6 +36,7 @@ import com.intfar.mabridge.protocol.StopButton
 import com.intfar.mabridge.protocol.StopState
 import com.intfar.mabridge.protocol.askedBy
 import com.intfar.mabridge.protocol.hostOf
+import com.intfar.mabridge.protocol.logTag
 import com.intfar.mabridge.protocol.isValidMessageId
 import com.intfar.mabridge.protocol.sinceParam
 import com.intfar.mabridge.protocol.statusNotificationFor
@@ -99,6 +100,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             seen = FileSeenStore(File(filesDir, "seen_ids.txt")) { log("dedup file read or write failed: ${it.javaClass.simpleName}") },
             clockMs = System::currentTimeMillis,
             stop = ::stopState,
+            members = { emptyList() }, // Task 6 reads the setup's member list here
         )
     }
 
@@ -251,21 +253,21 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 flushBacklog()
                 // Monotonic: a wall-clock correction mustn't strand the limiter's times (§3).
                 val now = SystemClock.elapsedRealtime()
-                if (!limiter.allows(d.channel, d.command, now)) {
+                if (!limiter.allows(d.source.channel, d.command, now)) {
                     // One receipt per channel and kind per window; a looping publisher's
                     // repeats are logged only, so they can't fill the receipt queue (§6).
-                    val receipt = limiter.shouldReceiptRefusal(d.channel, d.command, now)
+                    val receipt = limiter.shouldReceiptRefusal(d.source.channel, d.command, now)
                     if (receipt) ack(Receipts.rateLimited(d.command), msg.id)
-                    log("rate-limited (${d.channel.name.lowercase()}): ${d.command.text}${if (receipt) "" else " (no receipt: one already sent this window)"}")
+                    log("rate-limited (${d.source.logTag()}): ${d.command.text}${if (receipt) "" else " (no receipt: one already sent this window)"}")
                     return
                 }
                 // Every command past STOP counts, whatever it then does (§3, §6).
-                limiter.record(d.channel, d.command, now)
-                run(d.command, d.channel, msg.id)
+                limiter.record(d.source.channel, d.command, now)
+                run(d.command, d.source.channel, msg.id)
             } catch (e: Exception) {
                 // One failed action mustn't drop the subscription; it isn't retried (§5).
                 ack(Receipts.failed(d.command), msg.id)
-                log("failed (${d.channel.name.lowercase()}): ${d.command.text}: ${e.javaClass.simpleName}")
+                log("failed (${d.source.logTag()}): ${d.command.text}: ${e.javaClass.simpleName}")
             }
         }
     }

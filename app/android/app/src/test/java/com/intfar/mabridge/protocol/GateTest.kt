@@ -11,12 +11,14 @@ class GateTest {
     private val day = 24L * 60 * 60 * 1000
     private var clock = t
     private var stop = StopState(all = false, family = false)
-    private val gate = Gate("test-phone", PILOT_REGISTRY, InMemorySeenStore(), { clock }, { stop })
+    private val gate = Gate("test-phone", PILOT_REGISTRY, InMemorySeenStore(), { clock }, { stop }, { listOf(m1, m2) })
 
+    private val m1 = FamilyMember("m1", "Alex")
+    private val m2 = FamilyMember("m2", "Sam")
     private var nextId = 0
     private fun msg(
         body: String,
-        topic: String = "mab-test-phone-family",
+        topic: String = "mab-test-phone-family-m1",
         timeSec: Long = nowSec,
         id: String = "id${nextId++}",
     ) = IncomingMessage(id = id, timeSec = timeSec, topic = topic, body = body)
@@ -31,7 +33,7 @@ class GateTest {
 
     @Test fun freshAtBoundary() {
         assertEquals(
-            Decision.Run(Command.Launch("meet"), Channel.FAMILY),
+            Decision.Run(Command.Launch("meet"), Source(Channel.FAMILY, m1)),
             gate.decide(msg("launch meet", timeSec = nowSec - 120)),
         )
         assertTrue(gate.decide(msg("launch meet", timeSec = nowSec + 120)) is Decision.Run)
@@ -102,8 +104,29 @@ class GateTest {
         stop = StopState(all = false, family = true)
         assertEquals(Decision.Reject("err launch meet disabled", "r1"), stripLog(gate.decide(msg("launch meet", id = "r1"))))
         assertEquals(
-            Decision.Run(Command.Launch("meet"), Channel.OWNER),
+            Decision.Run(Command.Launch("meet"), Source(Channel.OWNER, null)),
             gate.decide(msg("launch meet", topic = owner)),
+        )
+    }
+
+    @Test fun familyRunCarriesMember() {
+        assertEquals(
+            Decision.Run(Command.Launch("meet"), Source(Channel.FAMILY, m1)),
+            gate.decide(msg("launch meet")),
+        )
+    }
+
+    @Test fun sharedFamilyTopicIgnored() {
+        val d = gate.decide(msg("launch meet", topic = "mab-test-phone-family")) as Decision.Ignore
+        assertEquals("ignored: topic mab-test-phone-family: launch meet", d.log)
+    }
+
+    @Test fun stopFamilyCoversEveryMember() {
+        stop = StopState(all = false, family = true)
+        assertEquals(Decision.Reject("err launch meet disabled", "a1"), stripLog(gate.decide(msg("launch meet", id = "a1"))))
+        assertEquals(
+            Decision.Reject("err launch meet disabled", "a2"),
+            stripLog(gate.decide(msg("launch meet", topic = "mab-test-phone-family-m2", id = "a2"))),
         )
     }
 
@@ -162,7 +185,7 @@ class GateTest {
 
     @Test fun rustdeskNotImplemented() {
         assertEquals(
-            Decision.Run(Command.BootstrapRustdesk, Channel.OWNER),
+            Decision.Run(Command.BootstrapRustdesk, Source(Channel.OWNER, null)),
             gate.decide(msg("bootstrap rustdesk", topic = owner)),
         )
         assertEquals("err bootstrap rustdesk not-implemented", Receipts.notImplemented(Command.BootstrapRustdesk))

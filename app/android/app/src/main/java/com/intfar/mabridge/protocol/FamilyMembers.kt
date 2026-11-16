@@ -18,7 +18,6 @@ const val MAX_MEMBER_NAME_LENGTH = 24
 const val MAX_TOPIC_LENGTH = 64
 
 private val RESERVED_SLUGS = setOf("owner", "ack", "family")
-private val MEMBER_SLUG = Regex("[a-z0-9]+(-[a-z0-9]+)*")
 private const val ZWNJ = 0x200C
 private const val ZWJ = 0x200D
 private const val RIGHT_QUOTE = 0x2019
@@ -33,7 +32,7 @@ fun memberTopic(device: String, member: String): String = "mab-$device-family-$m
  * [MAX_TOPIC_LENGTH] characters.
  */
 fun isValidMemberSlug(member: String, device: String): Boolean {
-    if (!MEMBER_SLUG.matches(member)) return false
+    if (!SLUG_WORDS.matches(member)) return false
     if (member in RESERVED_SLUGS) return false
     val words = member.split('-')
     if ("family" in words) return false
