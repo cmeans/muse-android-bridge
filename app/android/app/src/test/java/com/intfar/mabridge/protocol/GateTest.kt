@@ -11,10 +11,11 @@ class GateTest {
     private val day = 24L * 60 * 60 * 1000
     private var clock = t
     private var stop = StopState(all = false, family = false)
-    private val gate = Gate("test-phone", PILOT_REGISTRY, InMemorySeenStore(), { clock }, { stop }, { listOf(m1, m2) })
+    private val gate = Gate("test-phone", PILOT_REGISTRY, InMemorySeenStore(), { clock }, { stop }, { members })
 
     private val m1 = FamilyMember("m1", "Alex")
-    private val m2 = FamilyMember("m2", "Sam")
+    private val m2 = FamilyMember("m2", "Robin")
+    private var members = listOf(m1, m2)
     private var nextId = 0
     private fun msg(
         body: String,
@@ -123,11 +124,31 @@ class GateTest {
 
     @Test fun stopFamilyCoversEveryMember() {
         stop = StopState(all = false, family = true)
-        assertEquals(Decision.Reject("err launch meet disabled", "a1"), stripLog(gate.decide(msg("launch meet", id = "a1"))))
+        val d1 = gate.decide(msg("launch meet", id = "a1")) as Decision.Reject
+        assertEquals("err launch meet disabled", d1.receipt)
+        assertEquals("disabled (family/m1): launch meet", d1.log)
+        val d2 = gate.decide(msg("launch meet", topic = "mab-test-phone-family-m2", id = "a2")) as Decision.Reject
+        assertEquals("err launch meet disabled", d2.receipt)
+        assertEquals("disabled (family/m2): launch meet", d2.log)
+    }
+
+    @Test fun duplicateLogNamesTheMemberSlug() {
+        gate.decide(msg("launch meet", id = "dup"))
+        val d = gate.decide(msg("launch meet", id = "dup")) as Decision.DropDuplicate
+        assertEquals("duplicate (family/m1) dup: launch meet", d.log)
+    }
+
+    @Test fun membersAreReadOnEveryMessage() {
+        val m2Topic = "mab-test-phone-family-m2"
+        members = listOf(m1)
+        assertTrue(gate.decide(msg("launch meet", topic = m2Topic)) is Decision.Ignore)
+        members = listOf(m1, m2)
         assertEquals(
-            Decision.Reject("err launch meet disabled", "a2"),
-            stripLog(gate.decide(msg("launch meet", topic = "mab-test-phone-family-m2", id = "a2"))),
+            Decision.Run(Command.Launch("meet"), Source(Channel.FAMILY, m2)),
+            gate.decide(msg("launch meet", topic = m2Topic)),
         )
+        members = listOf(m1)
+        assertTrue(gate.decide(msg("launch meet", topic = m2Topic)) is Decision.Ignore)
     }
 
     @Test fun stopAllRejectsBoth() {

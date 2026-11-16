@@ -79,7 +79,7 @@ class ChannelTest {
     }
 
     private val m1 = FamilyMember("m1", "Alex")
-    private val m2 = FamilyMember("m2", "Sam")
+    private val m2 = FamilyMember("m2", "Robin")
 
     @Test fun memberTopicResolves() {
         assertEquals(Source(Channel.FAMILY, m1), sourceForTopic("mab-p-family-m1", "p", listOf(m1)))

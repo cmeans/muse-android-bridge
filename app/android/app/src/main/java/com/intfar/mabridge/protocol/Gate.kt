@@ -39,7 +39,7 @@ class Gate(
         val source = sourceForTopic(msg.topic, slug, members())
             ?: return Decision.Ignore("ignored: topic ${logExcerpt(msg.topic)}: $excerpt")
         val channel = source.channel
-        val name = source.logTag()
+        val tag = source.logTag()
 
         val nowMs = clockMs()
         val nowSec = nowMs / 1000
@@ -48,25 +48,25 @@ class Gate(
             // Recorded as seen too: a replayed copy of a message already handled, or a
             // second copy of a stale one, is a duplicate whose first receipt stands (§6).
             if (!seen.markIfNew(msg.id, nowMs)) {
-                return Decision.DropDuplicate("duplicate ($name, replayed) ${logExcerpt(msg.id)}: $excerpt")
+                return Decision.DropDuplicate("duplicate ($tag, replayed) ${logExcerpt(msg.id)}: $excerpt")
             }
             val age = if (msg.timeSec <= nowSec) "${nowSec - msg.timeSec}s old" else "${msg.timeSec - nowSec}s ahead"
             return Decision.DropStale(
                 Receipts.staleOf(msg.body, channel, registry),
                 msg.id,
-                "dropped-stale ($name, $age): $excerpt",
+                "dropped-stale ($tag, $age): $excerpt",
             )
         }
         if (!seen.markIfNew(msg.id, nowMs)) {
-            return Decision.DropDuplicate("duplicate ($name) ${logExcerpt(msg.id)}: $excerpt")
+            return Decision.DropDuplicate("duplicate ($tag) ${logExcerpt(msg.id)}: $excerpt")
         }
 
         val command = parseCommand(msg.body, channel, registry)
-            ?: return Decision.Reject(Receipts.unknown(), msg.id, "unknown-command ($name): $excerpt")
+            ?: return Decision.Reject(Receipts.unknown(), msg.id, "unknown-command ($tag): $excerpt")
 
         val s = stop()
         if (s.all || (channel == Channel.FAMILY && s.family)) {
-            return Decision.Reject(Receipts.disabled(command), msg.id, "disabled ($name): ${command.text}")
+            return Decision.Reject(Receipts.disabled(command), msg.id, "disabled ($tag): ${command.text}")
         }
         return Decision.Run(command, source)
     }
