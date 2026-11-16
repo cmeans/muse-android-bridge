@@ -1,5 +1,9 @@
 # Tasker executor — research notes
 
+> History (2026-11-16): the topic names below are the pre-0.5 ones. Protocol
+> 0.5 retired the shared `mab-pilot-phone-family` topic for per-member
+> `mab-<device>-family-<member>` topics (PROTOCOL §2.1). Reference only.
+
 ## A1 receive mechanism (desk research, 2026-11-11; device test still owed)
 
 The ntfy Android app officially integrates with automation apps via Android
