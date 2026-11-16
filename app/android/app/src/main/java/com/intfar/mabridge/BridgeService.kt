@@ -30,6 +30,7 @@ import com.intfar.mabridge.protocol.Channel
 import com.intfar.mabridge.protocol.Command
 import com.intfar.mabridge.protocol.ConfirmEvent
 import com.intfar.mabridge.protocol.ConfirmOutcome
+import com.intfar.mabridge.protocol.ConfirmRequest
 import com.intfar.mabridge.protocol.Decision
 import com.intfar.mabridge.protocol.FamilyMember
 import com.intfar.mabridge.protocol.Gate
@@ -53,7 +54,7 @@ import com.intfar.mabridge.protocol.hostOf
 import com.intfar.mabridge.protocol.isExpired
 import com.intfar.mabridge.protocol.memberTopic
 import com.intfar.mabridge.protocol.needsConfirm
-import com.intfar.mabridge.protocol.onConfirmRequest
+import com.intfar.mabridge.protocol.confirmRequestFor
 import com.intfar.mabridge.protocol.refusedForLog
 import com.intfar.mabridge.protocol.rustdeskRequestAnnouncement
 import com.intfar.mabridge.protocol.subscribeTopics
@@ -508,11 +509,21 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         // Reentrant: the expired request's TIMEOUT answers inside this lock, and never launches.
         synchronized(confirmLock) {
             readPending()?.let { if (isExpired(it, now)) resolveConfirm(ConfirmEvent.TIMEOUT, it.id) }
-            val p = onConfirmRequest(readPending(), id, member.slug, now)
-            if (p == null) {
-                ack(Receipts.pending(command), id)
-                log("pending ($tag): ${command.text}")
-                return
+            // STOP is read again here (the gate read it before): a STOP switched on since then
+            // has had its listener's STOPPED find nothing stored, so it's answered now; one
+            // switched on after this lock is released finds the stored request and withdraws it.
+            val p = when (val r = confirmRequestFor(stopState(), readPending(), id, member.slug, now)) {
+                ConfirmRequest.Disabled -> {
+                    ack(Receipts.disabled(command), id)
+                    log("disabled ($tag): ${command.text}")
+                    return
+                }
+                ConfirmRequest.Busy -> {
+                    ack(Receipts.pending(command), id)
+                    log("pending ($tag): ${command.text}")
+                    return
+                }
+                is ConfirmRequest.Ask -> r.pending
             }
             storePending(p)
             try {

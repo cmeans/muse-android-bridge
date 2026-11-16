@@ -77,6 +77,28 @@ fun isExpired(pending: PendingConfirm, nowMs: Long): Boolean = nowMs >= pending.
 fun onConfirmRequest(pending: PendingConfirm?, id: String, member: String, nowMs: Long): PendingConfirm? =
     if (pending != null) null else PendingConfirm(id, member, nowMs + CONFIRM_TIMEOUT_MS)
 
+/** What a new family `launch rustdesk` gets once it holds the confirm lock ([confirmRequestFor]). */
+sealed interface ConfirmRequest {
+    /** STOP all or STOP family is on: answer `disabled`, store nothing, post no prompt. */
+    object Disabled : ConfirmRequest
+    /** Another request is waiting: answer `pending`. */
+    object Busy : ConfirmRequest
+    /** Store [pending] and ask the owner. */
+    data class Ask(val pending: PendingConfirm) : ConfirmRequest
+}
+
+/**
+ * The decision for a new family `launch rustdesk`, made under the confirm lock with [stop] read
+ * there too: the gate read STOP earlier, and a STOP switched on since must not leave the owner a
+ * prompt after pressing it (its listener's STOPPED finds nothing stored yet). Any STOP wins, even
+ * over a waiting request, which that STOPPED answers. The caller resolves an expired request as
+ * [ConfirmEvent.TIMEOUT] first.
+ */
+fun confirmRequestFor(stop: StopState, pending: PendingConfirm?, id: String, member: String, nowMs: Long): ConfirmRequest {
+    if (stop.all || stop.family) return ConfirmRequest.Disabled
+    return onConfirmRequest(pending, id, member, nowMs)?.let { ConfirmRequest.Ask(it) } ?: ConfirmRequest.Busy
+}
+
 /**
  * Whether saving [new] over [old] moves where receipts go: the server, or the device name in the
  * ack topic `mab-<device>-ack`. State that belonged to the old place ("last connected", the

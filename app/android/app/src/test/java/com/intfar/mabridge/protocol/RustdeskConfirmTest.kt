@@ -158,4 +158,20 @@ class RustdeskConfirmTest {
         assertTrue(ackDestinationChanged(setup, setup.copy(slug = "q")))
         assertFalse(ackDestinationChanged(setup, setup.copy(username = "other", members = emptyList())))
     }
+
+    // #33 item 1: STOP is read again under the confirm lock, so a STOP that lands between the
+    // gate and the prompt answers `disabled` and stores nothing.
+    @Test fun stopReadUnderTheLockIsDisabled() {
+        val off = StopState(all = false, family = false)
+        for (stop in listOf(StopState(all = false, family = true), StopState(all = true, family = false))) {
+            assertEquals(ConfirmRequest.Disabled, confirmRequestFor(stop, null, "x1", "m1", 5_000L))
+            // STOP wins over a waiting request too: the listener's STOPPED answers that one.
+            assertEquals(ConfirmRequest.Disabled, confirmRequestFor(stop, pending, "x2", "m2", 5_000L))
+        }
+        assertEquals(ConfirmRequest.Busy, confirmRequestFor(off, pending, "x2", "m2", 5_000L))
+        assertEquals(
+            ConfirmRequest.Ask(PendingConfirm("x1", "m1", 5_000L + CONFIRM_TIMEOUT_MS)),
+            confirmRequestFor(off, null, "x1", "m1", 5_000L),
+        )
+    }
 }

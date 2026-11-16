@@ -250,7 +250,8 @@ c. Open runs the usual launch path (the three refusals again, since any can
 d. Only one request waits at a time. A second family `launch rustdesk` while
    one is pending gets `pending` and no second prompt. STOP (family or all)
    while one is pending withdraws it and answers `disabled`; so does an Open
-   tapped while STOP is on. Past the deadline, STOP answers `not-confirmed`
+   tapped while STOP is on, and a STOP switched on while a request is being
+   checked, before its prompt is posted (no prompt then shows). Past the deadline, STOP answers `not-confirmed`
    like a late tap (c).
 e. The pending request is kept across a restart: the next start withdraws it
    and answers `not-confirmed`. A setup save that changes the server or the
