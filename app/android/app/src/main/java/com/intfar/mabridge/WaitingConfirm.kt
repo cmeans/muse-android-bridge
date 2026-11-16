@@ -1,9 +1,9 @@
 package com.intfar.mabridge
 
 import android.content.Context
-import android.util.Base64
 import com.intfar.mabridge.protocol.CREDENTIAL_UNREADABLE
 import com.intfar.mabridge.protocol.PendingConfirm
+import com.intfar.mabridge.protocol.basicAuthHeader
 import com.intfar.mabridge.protocol.hostOf
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -78,7 +78,7 @@ class AckDestination private constructor(
     fun post(text: String): Int {
         var c: HttpURLConnection? = null
         try {
-            val auth = basicAuth(username, sealed?.let { store.open(it) }) ?: throw CredentialUnreadableException()
+            val auth = basicAuthHeader(username, sealed?.let { store.open(it) }) ?: throw CredentialUnreadableException()
             c = URL("$server/").openConnection() as HttpURLConnection
             c.requestMethod = "POST"
             c.setRequestProperty("Authorization", auth)
@@ -108,14 +108,7 @@ class AckDestination private constructor(
  * password can't be decrypted (or none is stored): the caller logs [CREDENTIAL_UNREADABLE] and
  * sends nothing, rather than an empty password. A Keystore call: not on the main thread.
  */
-fun basicAuth(ctx: Context): String? = basicAuth(Config.username(ctx), CredentialStore(ctx).load())
-
-private fun basicAuth(username: String, password: CharArray?): String? {
-    val pw = password ?: return null
-    val raw = "$username:${String(pw)}"
-    pw.fill('\u0000')
-    return "Basic " + Base64.encodeToString(raw.toByteArray(), Base64.NO_WRAP)
-}
+fun basicAuth(ctx: Context): String? = basicAuthHeader(Config.username(ctx), CredentialStore(ctx).load())
 
 /** The stored password can't be decrypted (or none is stored), so a request was not sent. */
 class CredentialUnreadableException : Exception("credential unreadable")

@@ -52,6 +52,7 @@ import com.intfar.mabridge.protocol.confirmPromptText
 import com.intfar.mabridge.protocol.confirmPromptTitle
 import com.intfar.mabridge.protocol.droppedMemberLog
 import com.intfar.mabridge.protocol.effectiveEvent
+import com.intfar.mabridge.protocol.eventUnderLock
 import com.intfar.mabridge.protocol.hostOf
 import com.intfar.mabridge.protocol.isExpired
 import com.intfar.mabridge.protocol.memberTopic
@@ -64,6 +65,7 @@ import com.intfar.mabridge.protocol.endedByBridge
 import com.intfar.mabridge.protocol.isReprobeDue
 import com.intfar.mabridge.protocol.probeRound
 import com.intfar.mabridge.protocol.reprobeDueAt
+import com.intfar.mabridge.protocol.retriedAfter
 import com.intfar.mabridge.protocol.logTag
 import com.intfar.mabridge.protocol.isValidMessageId
 import com.intfar.mabridge.protocol.sinceParam
@@ -264,12 +266,13 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         val backoff = Backoff()
         val slug = Config.deviceSlug(this)
         val owner = Channel.OWNER.topic(slug)
-        // The last probe round found every topic readable and reconnected at once (ProbeRound).
-        var allReadableBefore = false
+        // The last connect's probe round found every topic readable (retriedAfter): the next
+        // such round backs off, until a connect ends some other way.
+        var retriedAllReadable = false
         while (running) {
             reconnectTarget = null
-            val retriedAllReadable = allReadableBefore
-            allReadableBefore = false
+            // This connect's probe round, if it had one.
+            var lastRound: ProbeRound? = null
             // Set when this connect ends in an at-once reconnect: no backoff, no "ended" line.
             var reconnect = false
             // Setup saves restart the service, but reading the list here costs nothing.
@@ -297,7 +300,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                         if (t != owner) probed[t] = probe(t, auth)
                     }
                     if (!running) break
-                    when (val round = probeRound(owner, slug, members.map { it.slug }, probed, retriedAllReadable)) {
+                    val round = probeRound(owner, slug, members.map { it.slug }, probed, retriedAllReadable)
+                    lastRound = round
+                    when (round) {
                         is ProbeRound.Partial -> {
                             refused = round.refused
                             val answers = refused.map { it to probed[memberTopic(slug, it)] }
@@ -313,7 +318,6 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                             roundLogged = true
                             if (round.reconnectNow) {
                                 log("subscribe: HTTP 403, but every topic now answers; reconnecting")
-                                allReadableBefore = true
                                 reconnect = true
                             } else {
                                 log("subscribe: HTTP 403, though every topic answers alone; retrying later")
@@ -352,6 +356,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             } finally {
                 c?.disconnect()
             }
+            retriedAllReadable = retriedAfter(lastRound)
             if (running && !reconnect) {
                 try { Thread.sleep(backoff.nextDelayMs()) } catch (_: InterruptedException) { }
             }
@@ -622,16 +627,16 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
      * the Handler timer stops in deep sleep and an unlock can run past the deadline. Returns
      * the event the request was resolved as, or null when nothing was resolved: no request, or
      * another one than [eventId]. A launch (OPEN only) takes [runLock] after [confirmLock] is
-     * released, never inside it. On a stopped bridge nothing resolves (null): a TIMEOUT's receipt
-     * could no longer be sent, and an OPEN racing onDestroy would launch with its receipt
-     * dropped. `running` is read under [confirmLock], which onDestroy takes after clearing it,
-     * so the stored request stays for RESTARTED at the next start.
+     * released, never inside it. `running` and STOP are read under [confirmLock] and decided by
+     * eventUnderLock: on a stopped bridge nothing resolves (null), so the stored request stays
+     * for RESTARTED at the next start (onDestroy clears `running` before it takes the lock), and
+     * an OPEN under STOP all or STOP family resolves as STOPPED, so nothing launches under STOP.
      */
     private fun resolveConfirm(event: ConfirmEvent, eventId: String?): ConfirmEvent? {
         val (pending, resolvedAs, outcome) = synchronized(confirmLock) {
-            if (!running) return null
+            val decided = eventUnderLock(event, running, stopState()) ?: return null
             val p = readPending() ?: return null
-            val e = effectiveEvent(p, event, SystemClock.elapsedRealtime())
+            val e = effectiveEvent(p, decided, SystemClock.elapsedRealtime())
             val o = confirmOutcome(p, e, eventId ?: p.id) ?: return null
             endPending()
             Triple(p, e, o)
@@ -656,12 +661,12 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 // during the 5 s launch check, has launched already; its receipt is then logged as
                 // not sent (ack).
                 if (!running) return@execute
-                // Belt and braces: STOP withdraws the request itself, but nothing launches under STOP.
-                val stop = stopState()
-                val event = if (stop.all || stop.family) ConfirmEvent.STOPPED else ConfirmEvent.OPEN
+                // STOP withdraws the request itself; resolveConfirm also turns this OPEN into
+                // STOPPED under the lock, so nothing launches under STOP.
+                val r = resolveConfirm(ConfirmEvent.OPEN, id)
                 // Ended already, or ended now because the tap came past the deadline. A stop in
                 // between resolves nothing, and the request hasn't ended: no word then.
-                if (resolveConfirm(event, id) != event && running) requestEnded()
+                if ((r == null || r == ConfirmEvent.TIMEOUT) && running) requestEnded()
             }
         } catch (_: java.util.concurrent.RejectedExecutionException) {
             // The bridge is stopping; the request is answered at the next start.

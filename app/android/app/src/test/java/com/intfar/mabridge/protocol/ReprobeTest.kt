@@ -35,6 +35,28 @@ class ReprobeTest {
         assertEquals(ProbeRound.AllReadable(reconnectNow = false), probeRound(owner, "p", listOf("m1", "m2"), probed, retriedAllReadable = true))
     }
 
+    // Pre-QA r1 row 4: against a server that keeps refusing the list while each topic answers
+    // alone, only the first round reconnects at once; the rest back off until a round ends
+    // some other way.
+    @Test fun allReadableSettlesIntoBackoff() {
+        val all = linkedMapOf(owner to 200, "mab-p-family-m1" to 200)
+        val some = linkedMapOf(owner to 200, "mab-p-family-m1" to 403)
+        // null: a connect that ends without a probe round (subscribed, or a network error).
+        val connects: List<Map<String, Int>?> = listOf(all, all, all, all, some, all, all, null, all)
+        var retried = false
+        val actions = connects.map { probed ->
+            val round = probed?.let { probeRound(owner, "p", listOf("m1"), it, retried) }
+            retried = retriedAfter(round)
+            when (round) {
+                is ProbeRound.AllReadable -> if (round.reconnectNow) "now" else "backoff"
+                is ProbeRound.Partial -> "partial"
+                is ProbeRound.OwnerRefused -> "owner"
+                null -> "other"
+            }
+        }
+        assertEquals(listOf("now", "backoff", "backoff", "backoff", "partial", "now", "backoff", "other", "now"), actions)
+    }
+
     @Test fun someRefusedSubscribesToTheRest() {
         val probed = linkedMapOf(owner to 200, "mab-p-family-m1" to 403, "mab-p-family-m2" to 200)
         assertEquals(

@@ -77,6 +77,20 @@ fun isExpired(pending: PendingConfirm, nowMs: Long): Boolean = nowMs >= pending.
 fun onConfirmRequest(pending: PendingConfirm?, id: String, member: String, nowMs: Long): PendingConfirm? =
     if (pending != null) null else PendingConfirm(id, member, nowMs + CONFIRM_TIMEOUT_MS)
 
+/**
+ * The event the service decides a waiting request on, given [running] and [stop] as read under
+ * the confirm lock, before [effectiveEvent]. Null on a stopped bridge: nothing resolves, since a
+ * receipt could no longer be sent and an OPEN would launch with its receipt dropped; the stored
+ * request is answered as RESTARTED at the next start. An OPEN while STOP all or STOP family is
+ * on becomes STOPPED (`disabled`), so a STOP switched on after the tap but before the lock can't
+ * let RustDesk open. Every other event is unchanged.
+ */
+fun eventUnderLock(event: ConfirmEvent, running: Boolean, stop: StopState): ConfirmEvent? = when {
+    !running -> null
+    event == ConfirmEvent.OPEN && (stop.all || stop.family) -> ConfirmEvent.STOPPED
+    else -> event
+}
+
 /** What a new family `launch rustdesk` gets once it holds the confirm lock ([confirmRequestFor]). */
 sealed interface ConfirmRequest {
     /** STOP all or STOP family is on: answer `disabled`, store nothing, post no prompt. */

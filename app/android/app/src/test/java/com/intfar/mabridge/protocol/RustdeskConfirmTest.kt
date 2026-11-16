@@ -174,4 +174,25 @@ class RustdeskConfirmTest {
             confirmRequestFor(off, null, "x1", "m1", 5_000L),
         )
     }
+
+    // #33 item 2 and pre-QA r1 row 3: `running` and STOP are read under the confirm lock.
+    @Test fun stoppedBridgeResolvesNothing() {
+        val off = StopState(all = false, family = false)
+        for (e in ConfirmEvent.entries) assertNull(e.name, eventUnderLock(e, running = false, stop = off))
+        assertNull(eventUnderLock(ConfirmEvent.OPEN, running = false, stop = StopState(all = true, family = true)))
+    }
+
+    @Test fun openUnderStopIsStopped() {
+        for (stop in listOf(StopState(all = false, family = true), StopState(all = true, family = false))) {
+            assertEquals(ConfirmEvent.STOPPED, eventUnderLock(ConfirmEvent.OPEN, running = true, stop = stop))
+        }
+        assertEquals(ConfirmEvent.OPEN, eventUnderLock(ConfirmEvent.OPEN, running = true, stop = StopState(all = false, family = false)))
+    }
+
+    @Test fun otherEventsUnchangedWhileRunning() {
+        val stop = StopState(all = false, family = true)
+        for (e in ConfirmEvent.entries.filter { it != ConfirmEvent.OPEN }) {
+            assertEquals(e, eventUnderLock(e, running = true, stop = stop))
+        }
+    }
 }

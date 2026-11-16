@@ -55,6 +55,15 @@ fun probeRound(
 }
 
 /**
+ * The next [probeRound]'s `retriedAllReadable`, from this connect's [round] (null when it ended
+ * without one: subscribed, or a network error). True after any [ProbeRound.AllReadable], at once
+ * or not, so against a server that keeps refusing the list while each topic answers alone only
+ * the first round reconnects at once and the rest take the growing backoff; any other outcome
+ * starts over.
+ */
+fun retriedAfter(round: ProbeRound?): Boolean = round is ProbeRound.AllReadable
+
+/**
  * Whether [stream] is the one the bridge ended itself, to reconnect with a newly readable member
  * topic: [target] is the stream it meant to end. Tied to the stream, not a flag, so a target that
  * had already closed can't mute the next stream's "stream ended" or skip its backoff.
