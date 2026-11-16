@@ -22,7 +22,7 @@ touched until every Phase 1–3 item that bears on it has a recorded result.
 |---|---|---|---|
 | B1 | Exact package names on real hardware (Meet, Muse, RustDesk, …) | Read installed packages on the pilot phone; record per-device registry | Registry in executor config matches; every `launch` target verified |
 | B2 | Launch behavior on a locked phone | Fire `launch meet` while locked; unlock minutes later | Nothing weird on the lock screen; app is foreground (or predictably not) after unlock; behavior documented for the family runbook |
-| B3 | Announce quality | Trigger each command class; is the banner/TTS understandable and does it name the channel? | A bystander can say afterwards who asked for what |
+| B3 | Announce quality | Trigger each announced command class (not `status report`, PROTOCOL §5 step 4); is the banner/TTS understandable and does it name the channel? | A bystander can say afterwards who asked for what |
 | B4 | STOP controls | Disable family channel on-phone; fire family + owner commands; reboot; repeat | Family dead instantly, owner alive; states survive reboot; re-enable is owner-only and local |
 | B5 | Log integrity | Run a mixed day of commands | On-phone log complete, timestamped, matches ack receipts (past 5 stale messages in a reconnect backlog, the log counts the receipts not sent) |
 | B6 | Malformed-input safety | Publish junk bodies, near-miss commands, oversized bodies, wrong-topic messages | Zero actions taken; `err unknown-command` receipts for junk on a command topic, no receipt for other topics (PROTOCOL §5) |
@@ -35,7 +35,7 @@ touched until every Phase 1–3 item that bears on it has a recorded result.
 | # | Unknown | Test | Pass looks like |
 |---|---|---|---|
 | C1 | Hole-punch vs relay from real networks | Connect controller → pilot phone on home WiFi, on mobile data, and on a third-party WiFi | Session establishes in all three; direct-vs-relay path recorded per case |
-| C2 | The owner's per-session tap count, cold | Kill RustDesk, reboot phone, start a session from scratch, count required human taps (incl. after service kill) | Exact tap list written into the runbook; nothing beyond Start service / Start now + any one-time grants |
+| C2 | The owner's per-session tap count, cold | Kill RustDesk, reboot phone, start a session from scratch, count required human taps (incl. after service kill); record the Android and RustDesk versions | Exact tap list, with each screen's labels, written into the runbook; nothing beyond Start service, RustDesk's warning and Android's share-the-entire-screen consent + any one-time grants |
 | C3 | Accessibility/input persistence | Reboot; check Input Control accessibility state | Survives reboot, or the re-enable steps are in the runbook |
 | C4 | Sideload reality on the target Android version | Install official RustDesk build on pilot phone; note Play Protect behavior and the restricted-settings flow step by step | Full step list recorded; no undocumented surprise left for the in-person setup session |
 | C5 | Whitelist semantics | Two controller IDs whitelisted; connect from both; remove one; retry | Both work; removed ID refused before password prompt; re-adding restores |
@@ -58,7 +58,7 @@ touched until every Phase 1–3 item that bears on it has a recorded result.
 |---|---|---|---|
 | E1 | How does the owner's Muse publish owner-channel commands? | Mechanism + credential storage in their Muse's environment; fire the full registry | Works with credentials never touching the phone or the owner |
 | E2 | Voice + control simultaneously | Voice conversation with their Muse open while a control session runs on the same phone | Narration usable; audio routing sane; if not, narration moves to before/after summaries (open decision §7.3) |
-| E3 | Drill effectiveness | Teach the Start-service sequence incl. the scam-warning countdown; test cold a week later | They perform it unaided and can state the rule: only when their Muse asks, never for a caller |
+| E3 | Drill effectiveness | Teach the Start-service sequence, warning screen included; test cold a week later | They perform it unaided and can state the rule (ARCHITECTURE §4 step 4): only after they asked for help themselves (their own Muse, or a family member they reached on a number or app they already had for them), never because a call, message or pop-up asks them to |
 | E4 | Fake-alarm end-to-end (the motivating case) | Plant a Chrome site-notification alarm; owner asks their Muse to fix it; nobody helps | Fixed via the §4 session flow; time and tap count recorded |
 
 ## F. Security drills — before Phase 4 completes

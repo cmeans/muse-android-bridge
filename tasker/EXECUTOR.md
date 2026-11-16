@@ -10,13 +10,14 @@
 > Correct — and by design the owner never sees any of it. Everything in this sheet is
 > helper-side work, done by a family helper, ideally in one in-person
 > setup visit. The owner's entire surface is: open Muse, ask for help,
-> tap Start service / Start now when their Muse asks, and the STOP
+> start RustDesk's service (ARCHITECTURE §4 step 4) after asking their
+> Muse for help, and the STOP
 > scenes. No imports, no settings, no Tasker UI, ever. Corollary: the
 > owner's phone configuration must be treated as frozen once delivered —
 > no design step may depend on the owner re-importing, updating, or
 > reconfiguring anything. This is also the strongest argument yet for
-> the native app on the owner's device: store install + self-update
-> beats helper-maintained Tasker XML, so the app-at-parity swap matters
+> the native app on the owner's device: store install (which updates
+> itself; a sideloaded build doesn't) beats helper-maintained Tasker XML, so the app-at-parity swap matters
 > most for the owner phase, not the pilot.
 
 Build interactively on the phone (Tasker's UI generates valid project XML;
