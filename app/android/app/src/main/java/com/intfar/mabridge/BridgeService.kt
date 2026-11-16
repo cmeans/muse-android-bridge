@@ -35,7 +35,9 @@ import com.intfar.mabridge.protocol.Decision
 import com.intfar.mabridge.protocol.FamilyMember
 import com.intfar.mabridge.protocol.Gate
 import com.intfar.mabridge.protocol.PILOT_REGISTRY
+import com.intfar.mabridge.protocol.PROBE_EVERY_MS
 import com.intfar.mabridge.protocol.PROTOCOL_VERSION
+import com.intfar.mabridge.protocol.ProbeRound
 import com.intfar.mabridge.protocol.PendingConfirm
 import com.intfar.mabridge.protocol.RateLimiter
 import com.intfar.mabridge.protocol.StaleReceipts
@@ -58,7 +60,10 @@ import com.intfar.mabridge.protocol.confirmRequestFor
 import com.intfar.mabridge.protocol.refusedForLog
 import com.intfar.mabridge.protocol.rustdeskRequestAnnouncement
 import com.intfar.mabridge.protocol.subscribeTopics
-import com.intfar.mabridge.protocol.topicsAfterProbe
+import com.intfar.mabridge.protocol.endedByBridge
+import com.intfar.mabridge.protocol.isReprobeDue
+import com.intfar.mabridge.protocol.probeRound
+import com.intfar.mabridge.protocol.reprobeDueAt
 import com.intfar.mabridge.protocol.logTag
 import com.intfar.mabridge.protocol.isValidMessageId
 import com.intfar.mabridge.protocol.sinceParam
@@ -111,16 +116,18 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     private val confirmLock = WaitingConfirm.lock
     /** Held by every [run] call, so two launches can't overlap (the launch check reads the front app). */
     private val runLock = Any()
-    /** Set when the bridge ends its own stream to reconnect with a newly readable member topic. */
-    @Volatile private var reconnectNow = false
-    /** Asks again about the refused member topics (design §2), off the main thread. */
-    private val probeTick = Runnable {
-        try {
-            if (running && !acks.isShutdown) acks.execute { probeRefused() }
-        } catch (_: java.util.concurrent.RejectedExecutionException) {
-            // Shut down between the check and here: the bridge is stopping.
-        }
-    }
+    /**
+     * The stream the bridge ended itself, to reconnect with a newly readable member topic
+     * ([endedByBridge]): tied to that stream, so a probe that hit an already-closed one can't
+     * mute the next stream's "stream ended" or skip its backoff.
+     */
+    @Volatile private var reconnectTarget: HttpURLConnection? = null
+    /** Held while arming, firing or clearing the re-probe ([probeDueAt], [probeTick]), so only one tick is ever armed. */
+    private val probeLock = Any()
+    /** When the refused member topics are next asked about, on elapsedRealtime; null when none are refused. */
+    private var probeDueAt: Long? = null
+    /** The re-probe's Handler timer. It counts uptime, so [handle] checks the deadline too. */
+    private val probeTick = Runnable { probeIfDue() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -234,7 +241,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         // posting either finishes first (and this removes what it posted) or sees the stop and
         // removes them itself. Holds no runLock (lock order). The refused list is this run's.
         synchronized(confirmLock) { cancelConfirmPrompt() }
-        main.removeCallbacks(probeTick)
+        cancelReprobe()
         Config.prefs(this).edit().remove(Config.PREF_REFUSED_MEMBERS).putBoolean("service_running", false).apply()
         conn?.disconnect()
         stopRinging("bridge stopped")
@@ -257,8 +264,14 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         val backoff = Backoff()
         val slug = Config.deviceSlug(this)
         val owner = Channel.OWNER.topic(slug)
+        // The last probe round found every topic readable and reconnected at once (ProbeRound).
+        var allReadableBefore = false
         while (running) {
-            reconnectNow = false
+            reconnectTarget = null
+            val retriedAllReadable = allReadableBefore
+            allReadableBefore = false
+            // Set when this connect ends in an at-once reconnect: no backoff, no "ended" line.
+            var reconnect = false
             // Setup saves restart the service, but reading the list here costs nothing.
             val members = Config.familyMembers(this)
             val topics = subscribeTopics(slug, members)
@@ -269,6 +282,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 c = openStream(topics, auth)
                 var code = c.responseCode
                 var refused = emptyList<String>()
+                // The probe round wrote this connect's line itself (ProbeRound.AllReadable).
+                var roundLogged = false
                 if (code == 403 && topics.size > 1) {
                     // ntfy refuses the whole list when any one topic is unreadable, and doesn't
                     // say which (design §2): ask about each alone, the owner topic included.
@@ -282,23 +297,32 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                         if (t != owner) probed[t] = probe(t, auth)
                     }
                     if (!running) break
-                    if (probed[owner] == 200) {
-                        val readable = topicsAfterProbe(owner, probed)
-                        refused = members.map { it.slug }.filter { memberTopic(slug, it) !in readable }
-                        if (refused.isNotEmpty()) {
+                    when (val round = probeRound(owner, slug, members.map { it.slug }, probed, retriedAllReadable)) {
+                        is ProbeRound.Partial -> {
+                            refused = round.refused
                             val answers = refused.map { it to probed[memberTopic(slug, it)] }
                             log("subscribe: HTTP 403; family topics refused: ${refusedForLog(answers)}")
-                            c = openStream(readable, auth)
+                            c = openStream(round.topics, auth)
                             code = c.responseCode
                         }
-                    } else {
                         // A refused owner topic keeps today's `subscribe: HTTP 403` and backoff;
                         // any other answer is logged as itself, so the log names the real cause.
-                        code = probed.getValue(owner)
+                        is ProbeRound.OwnerRefused -> code = round.code
+                        // Access was granted between the subscribe and the probes: not a refusal.
+                        is ProbeRound.AllReadable -> {
+                            roundLogged = true
+                            if (round.reconnectNow) {
+                                log("subscribe: HTTP 403, but every topic now answers; reconnecting")
+                                allReadableBefore = true
+                                reconnect = true
+                            } else {
+                                log("subscribe: HTTP 403, though every topic answers alone; retrying later")
+                            }
+                        }
                     }
                 }
                 if (code != 200) {
-                    log("subscribe: HTTP $code")
+                    if (!roundLogged) log("subscribe: HTTP $code")
                 } else {
                     setRefused(refused)
                     Config.prefs(this).edit().putLong("last_connected", System.currentTimeMillis()).apply()
@@ -316,17 +340,19 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                         flushBacklog()
                     }
                     // The bridge ending its own stream to pick up a member topic isn't news.
-                    if (running && !reconnectNow) log("stream ended")
+                    if (endedByBridge(reconnectTarget, c)) reconnect = true
+                    else if (running) log("stream ended")
                 }
             } catch (_: CredentialUnreadableException) {
                 // Backs off like any failed connect, one line each time.
                 if (running) log("$CREDENTIAL_UNREADABLE; not subscribing")
             } catch (e: Exception) {
-                if (running && !reconnectNow) log("subscribe error: ${e.javaClass.simpleName}")
+                if (endedByBridge(reconnectTarget, c)) reconnect = true
+                else if (running) log("subscribe error: ${e.javaClass.simpleName}")
             } finally {
                 c?.disconnect()
             }
-            if (running && !reconnectNow) {
+            if (running && !reconnect) {
                 try { Thread.sleep(backoff.nextDelayMs()) } catch (_: InterruptedException) { }
             }
         }
@@ -378,7 +404,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     /**
      * Records the refused member slugs: in a preference, so the owner screen's Family tile
      * follows (it reads service state only from preferences), and on the status notification.
-     * While any are refused, the 15-minute timer asks about them again.
+     * While any are refused, they are asked about again in 15 minutes: the deadline is on
+     * elapsedRealtime, checked by the Handler tick and by every line read ([probeIfDue]). The one
+     * place the re-probe is armed, so two ticks can't be.
      */
     private fun setRefused(slugs: List<String>) {
         if (slugs != Config.refusedMembers(this)) {
@@ -388,14 +416,46 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             edit.apply()
             startForegroundWithStatus()
         }
-        main.removeCallbacks(probeTick)
-        if (slugs.isNotEmpty()) main.postDelayed(probeTick, PROBE_EVERY_MS)
+        synchronized(probeLock) {
+            main.removeCallbacks(probeTick)
+            probeDueAt = reprobeDueAt(slugs, SystemClock.elapsedRealtime())
+            if (probeDueAt != null) main.postDelayed(probeTick, PROBE_EVERY_MS)
+        }
+    }
+
+    /** Clears the re-probe: the bridge is stopping. */
+    private fun cancelReprobe() {
+        synchronized(probeLock) {
+            main.removeCallbacks(probeTick)
+            probeDueAt = null
+        }
     }
 
     /**
-     * The 15-minute timer's tick, on the [acks] executor: asks about the refused member topics
-     * only. When one now answers 200, ends the current stream, so the loop reconnects with it;
-     * otherwise it logs nothing and keeps the stream, so Recent doesn't fill with "Connected".
+     * Runs the re-probe, once, when its deadline has passed: from the Handler tick, which counts
+     * uptime and so stops in deep sleep, and from every line read (keepalives about every 45 s),
+     * which catches up after it. Disarms it first; [probeRefused] re-arms it through [setRefused].
+     */
+    private fun probeIfDue() {
+        synchronized(probeLock) {
+            val dueAt = probeDueAt ?: return
+            val now = SystemClock.elapsedRealtime()
+            if (!isReprobeDue(dueAt, now)) return
+            probeDueAt = null
+            main.removeCallbacks(probeTick)
+        }
+        try {
+            if (running && !acks.isShutdown) acks.execute { probeRefused() }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // Shut down between the check and here: the bridge is stopping.
+        }
+    }
+
+    /**
+     * The 15-minute re-probe, on the [acks] executor: asks about the refused member topics
+     * only. When one now answers 200, ends the current stream, so the loop reconnects with it
+     * (and re-arms through [setRefused] once subscribed); otherwise it logs nothing, keeps the
+     * stream, so Recent doesn't fill with "Connected", and re-arms through [setRefused].
      */
     private fun probeRefused() {
         if (!running) return
@@ -403,21 +463,24 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         val refused = Config.refusedMembers(this)
         if (refused.isEmpty()) return
         val auth = basicAuth()
+        // Re-arms with the list as stored now, not as read above: a reconnect during the probes
+        // may have recorded a newer one, which mustn't be overwritten.
         if (auth == null) {
-            // One line per tick, and the timer stays armed: re-entering the password restarts the bridge.
+            // One line per round, and re-armed: re-entering the password restarts the bridge.
             log("$CREDENTIAL_UNREADABLE; family topics not asked about")
-            main.postDelayed(probeTick, PROBE_EVERY_MS)
+            setRefused(Config.refusedMembers(this))
             return
         }
         val readable = refused.filter { running && probe(memberTopic(slug, it), auth) == 200 }
         if (!running) return
         if (readable.isEmpty()) {
-            main.postDelayed(probeTick, PROBE_EVERY_MS)
+            setRefused(Config.refusedMembers(this))
             return
         }
         log("family topics now readable: ${readable.joinToString(", ") { "family/$it" }}; reconnecting")
-        reconnectNow = true
-        conn?.disconnect()
+        val target = conn
+        reconnectTarget = target
+        target?.disconnect()
     }
 
     /** The Authorization header, or null when the stored password can't be decrypted. */
@@ -427,8 +490,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     private fun handle(line: String) {
         // The confirm timer stops in deep sleep: every line read, keepalives included (about
-        // every 45 s), checks the waiting request's deadline too (design §4).
+        // every 45 s), checks the waiting request's deadline too (design §4), and the re-probe's.
         expireConfirm()
+        probeIfDue()
         parseNtfyOpenTime(line)?.let { openTime ->
             // A new subscription: cached messages older than this are a replayed backlog (§6).
             flushBacklog()
@@ -1114,8 +1178,6 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         /** Tags the confirm timer's callback, so ending the request removes it. */
         private val CONFIRM_TOKEN = Any()
         private val RUSTDESK = Command.Launch("rustdesk")
-        /** How often the refused member topics are asked about again (design §2). */
-        private const val PROBE_EVERY_MS = 15 * 60_000L
         private const val PROBE_TIMEOUT_MS = 5_000
         private const val RING_MS = 30_000L
         /** How long a launched app has to come to the front before the launch counts as blocked. */
