@@ -569,7 +569,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
 
     /** Today's launch path for the confirmed request, in today's order, with handle's catch. */
     private fun launchConfirmed(p: PendingConfirm) {
-        // A setup save restarts the bridge (RESTARTED), so the member is normally still set up.
+        // A setup save restarts a running bridge (RESTARTED), so the member is normally still set up.
         val member = Config.familyMembers(this).firstOrNull { it.slug == p.member } ?: FamilyMember(p.member, "a family member")
         val source = Source(Channel.FAMILY, member)
         synchronized(runLock) {
