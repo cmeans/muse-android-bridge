@@ -23,9 +23,8 @@ needed or performed — user/ACL changes are live database operations.
 | `admin` (admin) | full (admin role) | full | full |
 
 Credential values live only in a root-only file on the server (0600) as
-`PILOT_PHONE_USER` / `PILOT_PHONE_PASSWORD`. The publisher authenticates with
-its own token, kept in a 0600 file on its host; grants attach to the user,
-so a token picks up new grants without being reissued.
+`PILOT_PHONE_USER` / `PILOT_PHONE_PASSWORD`. The publisher has its own user
+and token, kept in a 0600 file on its host.
 
 ## Verification (2026-11-11, all as expected)
 
@@ -35,7 +34,7 @@ so a token picks up new grants without being reissued.
 - phone user reads owner topic → receives the message
 - phone user publishes to owner topic → 403
 - phone user publishes receipt to ack → 200; reads ack → 403
-- phone user reads family topic → 200; reads the server operator's alert topic → 403 (no grant)
+- phone user reads family topic → 200; reads a topic it has no grant on → 403
 - publisher token reads ack topic → receives `ok launch meet`
 
 ## Family members (protocol 0.5)
@@ -123,6 +122,6 @@ Re-ran the phone credential's scope checks through the public front door
 (https://ntfy.example.com via the server's reverse proxy — the exact path the phone
 will use), not just localhost: read owner topic → message received;
 publish to owner → 403; publish ack receipt → 200; read ack → 403.
-Combined with provisioning-day localhost checks (alert topic → 403) and
+Combined with provisioning-day localhost checks (an ungranted topic → 403) and
 the F1 drill, test-plan F2 is satisfied. F3 (rogue controller refused)
 awaits the Phase 3 RustDesk server.

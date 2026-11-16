@@ -38,7 +38,7 @@ rollout decisions) is also the server operator.
 | Component | Job |
 |---|---|
 | ntfy (an existing container) | Bridge command transport. New scoped users/topics only; no new container. |
-| RustDesk server (1 new LXC) | hbbs (ID/rendezvous) + hbbr (relay). The family's private address list and meeting point: every enrolled device registers only here, under the server key. Public reachability via router forwards (TCP 21115, TCP+UDP 21116, TCP 21117); WebSocket ports closed (browser client snoozed 2026-11-11). No DDNS — clients carry the raw public IP; an IP change is an accepted, known breakage. |
+| RustDesk server (1 new LXC) | hbbs (ID/rendezvous) + hbbr (relay). The family's private address list and meeting point: every enrolled device registers only here, under the server key. Reachable from outside through router forwards of RustDesk's standard ports; WebSocket ports closed (browser client snoozed 2026-11-11). Clients carry the server's address directly; a change of that address is an accepted, known breakage. |
 
 ### 3.3 On the operator's side — the controller
 

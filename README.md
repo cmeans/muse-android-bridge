@@ -66,8 +66,8 @@ cached-replay behavior, registry, STOP semantics) carries over
 unchanged. Next: native Android app v1 — own ntfy subscription,
 registry launch, announce, ack, STOP UI — tested on the pilot phone
 first, same rollout order (pilot phone → helper's phone → owner's
-phone). The maintainer will hand implementation to claude-dev once
-the path is understood; the map, current scaffold status, open
+phone). The maintainer handed implementation to the developer on
+2026-11-12; the map, current scaffold status, open
 decisions, and acceptance boundary are in `app/DEV-HANDOFF.md`. The
 app under `app/android/` builds (since 2026-11-12) and has passed its
 first device tests on the pilot phone; it isn't ready for family
