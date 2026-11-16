@@ -48,7 +48,7 @@ class FamilyMembersTest {
         )
         for (n in good) assertTrue(n, isValidMemberName(n))
         val bad = listOf(
-            "‌Alex", "Alex‌", "‍Alex", "Alex‍", "", " ", "-", "'", "- -",
+            "\u200CAlex", "\u200DAlex", "", " ", "-", "'", "- -",
             "a".repeat(25), "Alex2", "Alex!", "Alex\tB", " Alex", "Alex ",
         )
         for (n in bad) assertFalse(n, isValidMemberName(n))
@@ -211,6 +211,52 @@ class FamilyMembersTest {
         // All distinct except the two forms of José, which are one name.
         val distinct = good.filter { it != "José" }.mapIndexed { i, n -> FamilyMember("m${i + 1}", n) }
         assertTrue(memberProblems(distinct, device).isEmpty())
+    }
+
+    // Pre-QA r2: the case fold needs its upper-case step (final sigma, Turkish dotless i).
+    @Test fun caseFoldGoesThroughUpperCase() {
+        assertEquals(1, memberProblems(listOf(FamilyMember("m1", "Alı"), FamilyMember("m2", "ALI")), device).size)
+        assertEquals(
+            1,
+            memberProblems(
+                listOf(FamilyMember("m1", "ΟΔΟΣ"), FamilyMember("m2", "οδος")),
+                device,
+            ).size,
+        )
+    }
+
+    // Pre-QA r2: a joiner may end a word (before a space or at the end); the key still drops it.
+    @Test fun joinerBeforeSpaceOrAtEndIsAllowed() {
+        for (n in listOf(
+            "അവന്‍", // Malayalam chillu by ZWJ at the end
+            "അവന്‍ അ", // ...and before a space
+            "مری‌ م", // Persian ZWNJ before a space
+            "Alex‌", "Alex‍",
+        )) {
+            assertTrue(n, isValidMemberName(n))
+        }
+        assertFalse(isValidMemberName("‍Alex"))
+        assertFalse(isValidMemberName("Alex ‍"))
+        // The QA r1 hole stays closed.
+        assertFalse(isValidMemberName("your‍ Muse"))
+        assertFalse(isValidMemberName("family‌"))
+        assertEquals(1, memberProblems(listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "Alex‍")), device).size)
+    }
+
+    @Test fun nbspIsAPlainSpace() {
+        assertTrue(isValidMemberName("Mary Ann"))
+        assertEquals("Mary Ann", normalizeMemberName("Mary Ann"))
+        assertFalse(isValidMemberName("your Muse"))
+        assertFalse(isValidMemberName("Mary  Ann"))
+        assertEquals(1, memberProblems(listOf(FamilyMember("m1", "Mary Ann"), FamilyMember("m2", "Mary Ann")), device).size)
+        assertEquals(listOf(FamilyMember("m1", "Mary Ann")), decodeMembers("m1\tMary Ann", device))
+    }
+
+    @Test fun doubledSpaceHasItsOwnReason() {
+        assertEquals(
+            listOf("\"Mary  Ann\" is not a usable name: it has two spaces in a row."),
+            memberProblems(listOf(FamilyMember("m1", "Mary  Ann")), device),
+        )
     }
 
     @Test fun decodeDropsRepeatedNameKey() {

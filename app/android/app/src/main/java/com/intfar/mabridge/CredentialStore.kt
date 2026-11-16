@@ -44,13 +44,31 @@ class CredentialStore(ctx: Context) {
     }
 
     /** The password, or null if none is saved or it can't be decrypted (e.g. the key was lost). */
-    fun load(): CharArray? {
+    fun load(): CharArray? = sealed()?.let { open(it) }
+
+    /**
+     * The stored IV and ciphertext, as they are now: two preference reads, no Keystore call, so
+     * cheap on any thread. [open] decrypts them later, off the main thread.
+     */
+    fun sealed(): Sealed? {
         val iv = prefs.getString(IV_KEY, null) ?: return null
         val ct = prefs.getString(CT_KEY, null) ?: return null
+        return Sealed(iv, ct)
+    }
+
+    /** An encrypted password: Base64 IV and ciphertext. Never the plaintext. */
+    class Sealed(internal val iv: String, internal val ct: String)
+
+    /**
+     * The password in [sealed], or null if it can't be decrypted (e.g. the key was lost). A Keystore
+     * call: not on the main thread. The key alias is fixed and kept, so a ciphertext read before a
+     * later save still decrypts.
+     */
+    fun open(sealed: Sealed): CharArray? {
         return try {
             val cipher = Cipher.getInstance(TRANSFORM)
-            cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
-            val plain = cipher.doFinal(Base64.decode(ct, Base64.NO_WRAP))
+            cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, Base64.decode(sealed.iv, Base64.NO_WRAP)))
+            val plain = cipher.doFinal(Base64.decode(sealed.ct, Base64.NO_WRAP))
             try {
                 Charsets.UTF_8.decode(ByteBuffer.wrap(plain)).let { buf -> CharArray(buf.remaining()).also { buf.get(it) } }
             } finally {

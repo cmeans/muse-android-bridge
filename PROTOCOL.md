@@ -255,7 +255,11 @@ d. Only one request waits at a time. A second family `launch rustdesk` while
 e. The pending request is kept across a restart: the next start withdraws it
    and answers `not-confirmed`. A setup save that changes the server or the
    device name withdraws it at once instead, before the new setup is written,
-   and answers `not-confirmed` on the old server and ack topic.
+   and answers `not-confirmed` on the old server and ack topic. That receipt
+   is sent once: if the phone has no network then, or the app is killed
+   before it goes, it is lost (the phone logs it). Any other setup save
+   restarts the bridge too, so a waiting request gets `not-confirmed` at that
+   restart, on the unchanged server.
 
 There is exactly one receipt per message, sent when the outcome is known (§6).
 
@@ -299,7 +303,8 @@ be later: the deadline is noticed at the next line read from the server, up to
 about 45 s late on a live connection, and on a dead connection not until the
 phone next wakes. If the bridge was stopped while a request waited, the answer
 comes at its next start, or at once from a setup save that changes the server
-or device name (§5e). Publishers must not resend while waiting.
+or device name (§5e; sent once, and lost with no network or if the app is
+killed at that moment). Publishers must not resend while waiting.
 
 A duplicate gets no receipt, including a replayed copy of a message already
 handled that is now older than 120 s (its first receipt stands).

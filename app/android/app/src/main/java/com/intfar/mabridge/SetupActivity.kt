@@ -25,7 +25,7 @@ import com.intfar.mabridge.protocol.isValidServer
 import com.intfar.mabridge.protocol.isValidSlug
 import com.intfar.mabridge.protocol.memberProblems
 import com.intfar.mabridge.protocol.setupChangeFor
-import java.text.Normalizer
+import com.intfar.mabridge.protocol.normalizeMemberName
 import kotlin.concurrent.thread
 
 /**
@@ -255,7 +255,7 @@ class SetupActivity : Activity() {
             .map { (id, name) ->
                 FamilyMember(
                     id.text.toString().trim().lowercase(),
-                    Normalizer.normalize(name.text.toString().trim(), Normalizer.Form.NFC),
+                    normalizeMemberName(name.text.toString().trim()),
                 )
             }
             .filter { it.slug.isNotEmpty() || it.name.isNotEmpty() }
@@ -370,15 +370,17 @@ class SetupActivity : Activity() {
 
     /**
      * Answers the waiting request, if any, as SETUP_CHANGED when this save moves the receipts'
-     * destination. The destination (server, ack topic, credential) is read first, from the setup
-     * still stored; the request is cleared under [WaitingConfirm.lock], which the bridge's own
-     * answers hold too, so exactly one of them sends its receipt. A running bridge's prompt and
-     * timer go when the restart after the save stops it; a tap before that finds no request.
+     * destination. The destination (server, ack topic, username and the password's ciphertext;
+     * preference reads only) is read first, from the setup still stored, and the password is
+     * decrypted on the send thread. The request is cleared under [WaitingConfirm.lock], which the
+     * bridge's own answers hold too, so exactly one of them sends its receipt. It is sent once:
+     * with no network, or if the app is killed before it goes, it is lost (PROTOCOL §5e). A
+     * running bridge's prompt and timer go when the restart after the save stops it; a tap before
+     * that finds no request.
      */
     private fun answerWaitingForSave(old: Setup, new: Setup) {
         if (!ackDestinationChanged(old, new)) return
         val ctx = applicationContext
-        if (WaitingConfirm.read(ctx) == null) return // nothing waits: skip reading the credential
         val dest = AckDestination.current(ctx)
         val (pending, answer) = synchronized(WaitingConfirm.lock) {
             val p = WaitingConfirm.read(ctx) ?: return

@@ -89,7 +89,8 @@ fun ackDestinationChanged(old: Setup, new: Setup): Boolean = old.server != new.s
  * ([ackDestinationChanged]), the save answers [pending] as SETUP_CHANGED (`not-confirmed`) on the
  * old server and ack topic, with the old credential, before writing the new setup (QA r1);
  * answered at the next start instead, it would go to the new place, which has no use for it and
- * may refuse it. Null when nothing waits or the destination stays: the bridge answers it as before.
+ * may refuse it. Null when nothing waits or the destination stays: every save restarts a running
+ * bridge, which then answers it as RESTARTED on the unchanged server.
  */
 fun setupSaveAnswer(pending: PendingConfirm?, old: Setup, new: Setup): ConfirmOutcome.Answer? {
     if (pending == null || !ackDestinationChanged(old, new)) return null

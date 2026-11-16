@@ -44,15 +44,28 @@ object WaitingConfirm {
 }
 
 /**
- * Where a receipt goes: the server, the ack topic and the credential's Authorization header,
- * read when the receipt is queued rather than when it's sent, so a setup save in between can't
- * send it to the new server (QA r1). Held in memory only, for one send.
+ * Where a receipt goes: the server, the ack topic, the username and the stored ciphertext of the
+ * password, read when the receipt is queued rather than when it's sent, so a setup save in between
+ * can't send it to the new server (QA r1). Reading them is cheap (preferences only), so any thread
+ * can queue a receipt; [post] decrypts the password at send time, off the main thread. It keeps
+ * the ciphertext it read, not the one stored at send time: that is the credential for the server
+ * it read, and a later save's password may be the new server's, which must never go to the old
+ * one. So a receipt queued just before a password-only change is sent with the old password,
+ * and may be refused (logged as `receipt failed`). Held in memory only, for one send; never
+ * the plaintext.
  */
-class AckDestination private constructor(private val server: String, private val topic: String, private val auth: String) {
+class AckDestination private constructor(
+    private val store: CredentialStore,
+    private val server: String,
+    private val topic: String,
+    private val username: String,
+    private val sealed: CredentialStore.Sealed?,
+) {
     /** Posts [text] to the ack topic: the HTTP status, or throws on a network error. Off the main thread. */
     fun post(text: String): Int {
         var c: HttpURLConnection? = null
         try {
+            val auth = basicAuth(username, sealed?.let { store.open(it) })
             c = URL("$server/").openConnection() as HttpURLConnection
             c.requestMethod = "POST"
             c.setRequestProperty("Authorization", auth)
@@ -69,15 +82,20 @@ class AckDestination private constructor(private val server: String, private val
     }
 
     companion object {
-        /** The stored setup's destination, as it is now. */
-        fun current(ctx: Context) = AckDestination(Config.server(ctx), Config.ackTopic(ctx), basicAuth(ctx))
+        /** The stored setup's destination, as it is now. Preference reads only: no Keystore call. */
+        fun current(ctx: Context): AckDestination {
+            val store = CredentialStore(ctx.applicationContext)
+            return AckDestination(store, Config.server(ctx), Config.ackTopic(ctx), Config.username(ctx), store.sealed())
+        }
     }
 }
 
-/** The stored username and password as an HTTP Basic Authorization header. */
-fun basicAuth(ctx: Context): String {
-    val pw = CredentialStore(ctx).load() ?: CharArray(0)
-    val raw = "${Config.username(ctx)}:${String(pw)}"
+/** The stored username and password as an HTTP Basic Authorization header. A Keystore call: not on the main thread. */
+fun basicAuth(ctx: Context): String = basicAuth(Config.username(ctx), CredentialStore(ctx).load())
+
+private fun basicAuth(username: String, password: CharArray?): String {
+    val pw = password ?: CharArray(0)
+    val raw = "$username:${String(pw)}"
     pw.fill('\u0000')
     return "Basic " + Base64.encodeToString(raw.toByteArray(), Base64.NO_WRAP)
 }

@@ -142,8 +142,8 @@ class RustdeskConfirmTest {
         assertEquals(ConfirmEvent.SETUP_CHANGED, effectiveEvent(pending, ConfirmEvent.SETUP_CHANGED, pending.deadlineMs + 1))
     }
 
-    @Test fun otherSetupChangesLeaveTheWaitingRequest() {
-        // Same server and ack topic: the running bridge answers it as before.
+    @Test fun otherSetupChangesLeaveItToTheRestart() {
+        // Same server and ack topic: the restart after every save answers it as RESTARTED.
         assertNull(setupSaveAnswer(pending, setup, setup.copy(username = "other")))
         assertNull(setupSaveAnswer(pending, setup, setup.copy(members = listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "Bo")))))
         assertNull(setupSaveAnswer(pending, setup, setup))

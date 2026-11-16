@@ -955,7 +955,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             return
         }
         // Where it goes is read now, not when the queue reaches it: a setup save in between
-        // mustn't send it to the new server or ack topic (QA r1).
+        // mustn't send it to the new server or ack topic (QA r1). Preference reads only: the
+        // password is decrypted at send time, on the executor, never on the caller's thread.
         val dest = AckDestination.current(this)
         try {
             acks.execute {

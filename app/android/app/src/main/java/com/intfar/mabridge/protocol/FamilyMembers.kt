@@ -54,14 +54,16 @@ private fun memberSlugProblem(member: String, device: String): String? {
 
 /**
  * A display name: letters of any script, combining marks, spaces, hyphens and apostrophes, with
- * at least one letter and at most [MAX_MEMBER_NAME_LENGTH] code points after NFC normalization,
- * with no space at either end and no two spaces in a row. A zero-width joiner or non-joiner is
- * allowed only between a letter or mark and a letter; every other default-ignorable code point is
- * refused, letters and marks included (the Hangul fillers such as U+3164 are letters with no
- * glyph), so a name can't be blank on screen. A joiner can still sit between two Latin letters,
- * where it draws nothing, so names are compared on [nameKey], which drops it: the app's own words
- * for a sender ([isAppWording]) are refused on that key, and [memberProblems] and [decodeMembers]
- * find repeats on it. It takes the raw name and normalizes it itself.
+ * at least one letter and at most [MAX_MEMBER_NAME_LENGTH] code points after
+ * [normalizeMemberName] (NFC, a no-break space as a plain space), with no space at either end and
+ * no two spaces in a row. A zero-width joiner or non-joiner is allowed only after a letter or mark
+ * and before a letter, a space or the end of the name (a word may end in one, as in a Malayalam
+ * chillu written with a ZWJ); every other default-ignorable code point is refused, letters and
+ * marks included (the Hangul fillers such as U+3164 are letters with no glyph), so a name can't
+ * be blank on screen. A joiner can still sit beside Latin letters, where it draws nothing, so
+ * names are compared on [nameKey], which drops it: the app's own words for a sender
+ * ([isAppWording]) are refused on that key, and [memberProblems] and [decodeMembers] find repeats
+ * on it. It takes the raw name and normalizes it itself.
  */
 fun isValidMemberName(name: String): Boolean {
     val normalized = normalizeName(name)
@@ -69,7 +71,7 @@ fun isValidMemberName(name: String): Boolean {
     val cps = normalized.codePoints().toArray()
     if (cps.isEmpty() || cps.size > MAX_MEMBER_NAME_LENGTH) return false
     if (cps.first() == ' '.code || cps.last() == ' '.code) return false
-    if ((1 until cps.size).any { cps[it] == ' '.code && cps[it - 1] == ' '.code }) return false
+    if (hasDoubledSpace(normalized)) return false
     var hasLetter = false
     var prevLetterOrMark = false
     for ((i, cp) in cps.withIndex()) {
@@ -83,7 +85,8 @@ fun isValidMemberName(name: String): Boolean {
             isMark -> if (!prevLetterOrMark) return false
             cp == ZWNJ || cp == ZWJ -> {
                 if (!prevLetterOrMark) return false
-                if (i + 1 >= cps.size || !Character.isLetter(cps[i + 1])) return false
+                val next = cps.getOrNull(i + 1)
+                if (next != null && next != ' '.code && !Character.isLetter(next)) return false
             }
             cp == ' '.code || cp == '-'.code || cp == '\''.code || cp == RIGHT_QUOTE -> Unit
             else -> return false
@@ -93,11 +96,15 @@ fun isValidMemberName(name: String): Boolean {
     return hasLetter
 }
 
+/** Whether the [normalized] name has two spaces in a row. */
+private fun hasDoubledSpace(normalized: String): Boolean = "  " in normalized
+
 /**
  * The words the app itself uses for a sender: "your Muse" (the owner channel), and "family" and
  * "a family member" (its fallbacks). A member with one of them as a name would read as that
- * sender ("Opening Meet: asked by your Muse"). Compared on [nameKey], so a joiner or a doubled
- * space inside the words doesn't get past.
+ * sender ("Opening Meet: asked by your Muse"). Compared on [nameKey], so the check catches a name
+ * that differs from them only by joiners, spacing or case; lookalike letters from another script
+ * (a Cyrillic "у" for "y"), fullwidth forms and ligatures aren't caught.
  */
 private fun isAppWording(name: String): Boolean = nameKey(name) in APP_WORDING_KEYS
 
@@ -110,7 +117,8 @@ private val APP_WORDING_KEYS = setOf("your Muse", "family", "a family member").m
  * The form two names are compared on: NFC, zero-width joiners and non-joiners removed, each run
  * of whitespace one space, ends trimmed, and case folded code point by code point
  * (`Character.toLowerCase(Character.toUpperCase(cp))`), never with the default locale, so a
- * Turkish phone compares "ALI" and "ali" as the same name. Two names with one key read the same.
+ * Turkish phone compares "ALI" and "ali" as the same name, and the upper-case step folds a final
+ * sigma and a dotless i too. Names with one key differ only by joiners, spacing or case.
  */
 internal fun nameKey(name: String): String {
     val noJoiners = normalizeName(name).filter { it.code != ZWNJ && it.code != ZWJ }
@@ -151,6 +159,8 @@ fun memberProblems(members: List<FamilyMember>, device: String): List<String> {
         }
         if (isAppWording(m.name)) {
             problems += "\"${m.name}\" can't be a member's name: the phone uses it for your Muse or the family as a whole."
+        } else if (hasDoubledSpace(normalizeName(m.name))) {
+            problems += "\"${m.name}\" is not a usable name: it has two spaces in a row."
         } else if (!isValidMemberName(m.name)) {
             problems += "\"${m.name}\" is not a usable name (letters, spaces, hyphens and apostrophes; up to " +
                 "$MAX_MEMBER_NAME_LENGTH characters)."
@@ -170,8 +180,9 @@ fun encodeMembers(members: List<FamilyMember>): String =
 /**
  * The members in [stored]. A line is kept only when it has exactly two fields, a valid slug for
  * [device], a valid name, and a slug and a name ([nameKey]) not seen before; at most
- * [MAX_MEMBERS] are kept. So a bad stored value can't add a topic, or a second member who reads
- * as the first. Names come back NFC-normalized.
+ * [MAX_MEMBERS] are kept. So a bad stored value can't add a topic, or a second member whose name
+ * differs from an earlier one only by joiners, spacing or case (lookalike letters from another
+ * script aren't caught). Names come back as [normalizeMemberName] gives them.
  */
 fun decodeMembers(stored: String, device: String): List<FamilyMember> {
     val out = mutableListOf<FamilyMember>()
@@ -189,4 +200,11 @@ fun decodeMembers(stored: String, device: String): List<FamilyMember> {
     return out
 }
 
-private fun normalizeName(name: String): String = Normalizer.normalize(name, Normalizer.Form.NFC)
+/**
+ * A display name as the phone stores and checks it: NFC, with each no-break space (U+00A0) as a
+ * plain space, so "Mary Ann" typed either way is one name. The setup screen stores this form.
+ */
+fun normalizeMemberName(name: String): String =
+    Normalizer.normalize(name, Normalizer.Form.NFC).replace(' ', ' ')
+
+private fun normalizeName(name: String): String = normalizeMemberName(name)
