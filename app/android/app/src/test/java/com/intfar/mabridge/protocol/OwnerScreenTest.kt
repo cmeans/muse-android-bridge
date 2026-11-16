@@ -51,6 +51,14 @@ class OwnerScreenTest {
         assertEquals("Shared status · asked by your Muse", item("ok (owner): status report")?.text)
     }
 
+    @Test fun runLockRecheckLines() {
+        // #33 item 21: STOP while waiting to run shows as a STOP refusal; a stopped bridge's
+        // confirmed launch as not opened; any other command left unrun stays out of Recent.
+        assertEquals("Refused, stopped: Meet · your Muse", item("disabled (owner): launch meet (STOP while waiting to run)")?.text)
+        assertEquals("Not opened, no answer: RustDesk · a family member", item("not-confirmed (family/m1): launch rustdesk (bridge stopped while waiting to run)")?.text)
+        assertEquals(null, item("not-run (owner): ring find (bridge stopped while waiting to run)"))
+    }
+
     @Test fun refusalsAreMarked() {
         val r = item("disabled (family): ring find")!!
         assertEquals("Refused, stopped: ring · family", r.text)

@@ -4,7 +4,31 @@ package com.intfar.mabridge.protocol
 data class IncomingMessage(val id: String, val timeSec: Long, val topic: String, val body: String)
 
 /** The owner's STOP switches (PROTOCOL.md §7). */
-data class StopState(val all: Boolean, val family: Boolean)
+data class StopState(val all: Boolean, val family: Boolean) {
+    /** Whether these switches turn [channel] off: STOP all turns off both, STOP family only the family channel. */
+    fun blocks(channel: Channel): Boolean = all || (channel == Channel.FAMILY && family)
+}
+
+/** What a command that passed the gate does once it holds the service's run lock ([atRunLock]). */
+enum class RunLockCheck {
+    /** Run it. */
+    RUN,
+    /** STOP turned its channel off while it waited: answer `disabled`, run nothing. */
+    DISABLED,
+    /** The bridge stopped while it waited: run nothing. */
+    STOPPED,
+}
+
+/**
+ * The check made again after a command takes the run lock: it can wait there up to 5 s behind
+ * another command's launch check, and STOP or Stop bridge may come in that wait (#33 item 21).
+ * [running] and [stop] are read after the lock is taken. A stopped bridge wins over STOP.
+ */
+fun atRunLock(running: Boolean, stop: StopState, channel: Channel): RunLockCheck = when {
+    !running -> RunLockCheck.STOPPED
+    stop.blocks(channel) -> RunLockCheck.DISABLED
+    else -> RunLockCheck.RUN
+}
 
 /** What to do with a message. Receipts go to the ack topic; logs to the on-phone log. */
 sealed interface Decision {
@@ -65,7 +89,7 @@ class Gate(
             ?: return Decision.Reject(Receipts.unknown(), msg.id, "unknown-command ($tag): $excerpt")
 
         val s = stop()
-        if (s.all || (channel == Channel.FAMILY && s.family)) {
+        if (s.blocks(channel)) {
             return Decision.Reject(Receipts.disabled(command), msg.id, "disabled ($tag): ${command.text}")
         }
         return Decision.Run(command, source)

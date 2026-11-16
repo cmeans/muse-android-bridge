@@ -101,6 +101,43 @@ class GateTest {
         assertTrue(gate.decide(msg("launch meet", id = "same", timeSec = clock / 1000)) is Decision.Run)
     }
 
+    // ---- atRunLock: the re-check after waiting for the run lock (#33 item 21) ----
+
+    @Test fun atRunLockRunsWhenRunningAndNothingStopped() {
+        val none = StopState(all = false, family = false)
+        assertEquals(RunLockCheck.RUN, atRunLock(running = true, stop = none, channel = Channel.OWNER))
+        assertEquals(RunLockCheck.RUN, atRunLock(running = true, stop = none, channel = Channel.FAMILY))
+    }
+
+    @Test fun atRunLockStopFamilyDisablesOnlyFamily() {
+        val fam = StopState(all = false, family = true)
+        assertEquals(RunLockCheck.DISABLED, atRunLock(running = true, stop = fam, channel = Channel.FAMILY))
+        assertEquals(RunLockCheck.RUN, atRunLock(running = true, stop = fam, channel = Channel.OWNER))
+    }
+
+    @Test fun atRunLockStopAllDisablesBothChannels() {
+        val all = StopState(all = true, family = false)
+        assertEquals(RunLockCheck.DISABLED, atRunLock(running = true, stop = all, channel = Channel.OWNER))
+        assertEquals(RunLockCheck.DISABLED, atRunLock(running = true, stop = all, channel = Channel.FAMILY))
+    }
+
+    @Test fun atRunLockStoppedBridgeWinsOverStop() {
+        for (all in listOf(false, true)) for (family in listOf(false, true)) for (ch in Channel.values()) {
+            assertEquals(RunLockCheck.STOPPED, atRunLock(running = false, stop = StopState(all, family), channel = ch))
+        }
+    }
+
+    @Test fun atRunLockMatchesTheGatesStopRule() {
+        // The re-check and the gate must agree on what STOP turns off.
+        for (all in listOf(false, true)) for (family in listOf(false, true)) {
+            stop = StopState(all, family)
+            for ((ch, topic) in listOf(Channel.OWNER to "mab-test-phone-owner", Channel.FAMILY to "mab-test-phone-family-m1")) {
+                val gateRefuses = gate.decide(msg("launch meet", topic = topic)) is Decision.Reject
+                assertEquals("all=$all family=$family $ch", gateRefuses, atRunLock(true, stop, ch) == RunLockCheck.DISABLED)
+            }
+        }
+    }
+
     @Test fun stopFamilyRejectsFamily() {
         stop = StopState(all = false, family = true)
         assertEquals(Decision.Reject("err launch meet disabled", "r1"), stripLog(gate.decide(msg("launch meet", id = "r1"))))

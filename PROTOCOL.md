@@ -252,6 +252,9 @@ d. Only one request waits at a time. A second family `launch rustdesk` while
    while one is pending withdraws it and answers `disabled`; so does an Open
    tapped while STOP is on, and a STOP switched on while a request is being
    checked: it answers `disabled`, and any prompt already posted is withdrawn.
+   An Open can also wait up to 5 s behind another command's launch check
+   before its own launch starts: STOP in that wait answers `disabled`, and
+   the bridge stopping in that wait answers `not-confirmed`; nothing opens.
    Past the deadline, STOP answers `not-confirmed` like a late tap (c).
 e. The pending request is kept across a restart: the next start withdraws it
    and answers `not-confirmed`. A setup save that changes the server or the
@@ -355,7 +358,9 @@ The executor MUST provide, reachable by the phone's owner without help:
 - The on-phone log (§5.6), readable on the device.
 
 Disabling a channel is local and instant; it does not require contacting any
-publisher or the server admin. Re-enabling is likewise the owner's act alone.
+publisher or the server admin. A command that has passed the checks but is
+still waiting to run (behind another command's 5 s launch check) is checked
+against STOP again before it runs, and answers `disabled`. Re-enabling is likewise the owner's act alone.
 
 ## 8. Threat model (summary)
 

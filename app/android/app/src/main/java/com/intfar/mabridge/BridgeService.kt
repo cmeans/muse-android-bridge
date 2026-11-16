@@ -40,6 +40,8 @@ import com.intfar.mabridge.protocol.PROTOCOL_VERSION
 import com.intfar.mabridge.protocol.ProbeRound
 import com.intfar.mabridge.protocol.PendingConfirm
 import com.intfar.mabridge.protocol.RateLimiter
+import com.intfar.mabridge.protocol.RunLockCheck
+import com.intfar.mabridge.protocol.atRunLock
 import com.intfar.mabridge.protocol.StaleReceipts
 import com.intfar.mabridge.protocol.Receipts
 import com.intfar.mabridge.protocol.STOP_PREF_KEYS
@@ -533,7 +535,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 limiter.record(d.source.channel, d.command, now)
                 // A family member's RustDesk launch waits for the owner's tap (design §4).
                 if (needsConfirm(d.command, d.source)) askConfirm(d.command as Command.Launch, d.source, msg.id)
-                else synchronized(runLock) { run(d.command, d.source, msg.id) }
+                else synchronized(runLock) { runIfStillAllowed(d.command, d.source, msg.id, confirmed = false) }
             } catch (e: Exception) {
                 // One failed action mustn't drop the subscription; it isn't retried (§5).
                 ack(Receipts.failed(d.command), msg.id)
@@ -658,7 +660,9 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 // shutdown() still runs queued tasks. A bridge stopped before the tap is resolved
                 // never launches: resolveConfirm reads `running` under the confirm lock, and the
                 // stored request stays for RESTARTED at the next start. One stopped after that,
-                // during the 5 s launch check, has launched already; its receipt is then logged as
+                // while the launch waits for runLock (another command's 5 s launch check can hold
+                // it), launches nothing and answers `not-confirmed` (launchConfirmed). One stopped
+                // during its own launch check has launched already; its receipt is then logged as
                 // not sent (ack).
                 if (!running) return@execute
                 // STOP withdraws the request itself; resolveConfirm also turns this OPEN into
@@ -673,17 +677,46 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
-    /** Today's launch path for the confirmed request, in today's order, with handle's catch. */
+    /**
+     * Today's launch path for the confirmed request, in today's order, with handle's catch. The
+     * request has already ended (resolveConfirm), so STOP and Stop bridge are checked again once
+     * runLock is held: the wait for it can last another command's 5 s launch check (#33 item 21).
+     */
     private fun launchConfirmed(p: PendingConfirm) {
         // A setup save restarts a running bridge (RESTARTED), so the member is normally still set up.
         val member = Config.familyMembers(this).firstOrNull { it.slug == p.member } ?: FamilyMember(p.member, "a family member")
         val source = Source(Channel.FAMILY, member)
         synchronized(runLock) {
             try {
-                run(RUSTDESK, source, p.id)
+                runIfStillAllowed(RUSTDESK, source, p.id, confirmed = true)
             } catch (e: Exception) {
                 ack(Receipts.failed(RUSTDESK), p.id)
                 log("failed (${source.logTag()}): ${RUSTDESK.text}: ${e.javaClass.simpleName}")
+            }
+        }
+    }
+
+    /**
+     * Runs [command] unless STOP or Stop bridge came while it waited for [runLock] behind another
+     * command's launch check (atRunLock; #33 item 21). Under STOP it answers `disabled`. On a
+     * stopped bridge a [confirmed] RustDesk launch answers `not-confirmed`, as RESTARTED would
+     * have (its request has ended, so the next start has nothing left to answer); any other
+     * command gets no receipt, as for a command the stopping bridge never read. Callers hold
+     * [runLock].
+     */
+    private fun runIfStillAllowed(command: Command, source: Source, id: String, confirmed: Boolean) {
+        val tag = source.logTag()
+        when (atRunLock(running, stopState(), source.channel)) {
+            RunLockCheck.RUN -> run(command, source, id)
+            RunLockCheck.DISABLED -> {
+                ack(Receipts.disabled(command), id)
+                log("disabled ($tag): ${command.text} (STOP while waiting to run)")
+            }
+            RunLockCheck.STOPPED -> if (confirmed && command is Command.Launch) {
+                ack(Receipts.notConfirmed(command), id)
+                log("not-confirmed ($tag): ${command.text} (bridge stopped while waiting to run)")
+            } else {
+                log("not-run ($tag): ${command.text} (bridge stopped while waiting to run)")
             }
         }
     }
