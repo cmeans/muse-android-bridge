@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = 'org.intfar.mabridge'
+    namespace = 'com.intfar.mabridge'
     compileSdk = 36
 
     defaultConfig {
-        applicationId = 'org.intfar.mabridge'
+        applicationId = 'com.intfar.mabridge'
         minSdk = 29
         targetSdk = 36
         versionCode = 2
