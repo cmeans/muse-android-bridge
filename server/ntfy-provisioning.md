@@ -65,12 +65,16 @@ ntfy user `fam-m1`. Every grant names the exact topic, never a wildcard:
 **Removing a member: phone first.** Remove the member in the phone's setup,
 then revoke the grants (`ntfy access fam-m1 mab-pilot-phone-family-m1 deny`,
 or `ntfy access --reset fam-m1 mab-pilot-phone-family-m1`, and the phone
-user's read). Revoking the phone's read first would leave that member shown
+user's read with `ntfy access --reset pilot-phone-phone
+mab-pilot-phone-family-m1`). Revoking the phone's read first would leave that member shown
 on the phone as unreachable until it's removed.
 
 **Retiring the shared topic (once per phone, not per member; D2).** Phone
-first: move the phone to the 0.5 build, which no longer reads
-`mab-pilot-phone-family`. Only then revoke every family user's grants on that
+first: move the phone to the 0.5 build, which never reads
+`mab-pilot-phone-family` (so the family channel is silent on the phone until
+a member is added). Do this only after each family user has their member
+topic granted and added on the phone (the steps above); revoking the shared
+topic first would cut that person off. Only then revoke every family user's grants on that
 topic, and the phone user's read on it (`ntfy access --reset <user>
 mab-pilot-phone-family`). Revoking before the phone has the new build would
 make the phone's subscription fail with `403`. Afterwards a message sent to

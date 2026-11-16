@@ -5,7 +5,9 @@ own topic, so the phone knows who asked (§2.1, §3), names that member in
 announcements (§5 step 4), and holds a family `launch rustdesk` until the
 owner taps Open on the phone (§5, confirm flow); it adds the `declined`,
 `not-confirmed` and `pending` receipts (§6) and retires the shared family
-topic (§9); the maintainer approved the approach on 2026-11-15. 0.4 adds the command's message id
+topic (§9); the maintainer approved the approach on 2026-11-15.
+
+0.4 adds the command's message id
 to every receipt (§6), so a publisher can match each receipt to its
 command exactly; the maintainer decided it on 2026-11-13 (mcp-phone-commands
 design Q1), reversing 0.3's no-ids rule; and the phone's clock to `status
@@ -287,7 +289,7 @@ warn about a phone clock that's off (§2.3's freshness check uses that
 clock).
 
 A family `launch rustdesk` that reaches the confirm step (§5) answers when the
-outcome is known, not when it arrives. Usually that is about 2 minutes after
+outcome is known, not when it arrives. Usually that is at most about 2 minutes after
 the phone handles it, and the phone accepts a command up to 2 minutes old
 (§2.3), so a publisher can wait up to about 4 minutes. After deep sleep it can
 be later: the deadline is noticed at the next line read from the server, up to
@@ -364,10 +366,12 @@ update to match. Executors record the protocol version they implement and
 report it in `status report` receipts.
 
 0.5 is additive for publishers on the owner channel. The shared family topic
-`mab-<device>-family` is retired: the phone stops reading it once its members
-have their own topics, and its ACL grants are revoked, in that order (the phone
-moves to the new build first, or the `403` rule in §3 would cut it off), so a
-message sent there afterwards reaches nobody and gets no receipt. A family
+`mab-<device>-family` is retired: the 0.5 build no longer reads it, so the
+family channel is silent on a phone until a member is added (§2.1). Its ACL
+grants are revoked only after the phone runs the 0.5 build (or the `403` rule
+in §3 would cut it off), and each family user has their member topic granted
+and added on the phone. A message sent there afterwards reaches nobody and
+gets no receipt. A family
 publisher must know which topic its credential writes to. A family `launch
 rustdesk` can now answer up to about 4 minutes after publishing (2 minutes of
 waiting from when the phone handles it, which can itself be up to 2 minutes

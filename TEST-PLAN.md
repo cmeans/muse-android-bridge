@@ -22,7 +22,7 @@ touched until every Phase 1–3 item that bears on it has a recorded result.
 |---|---|---|---|
 | B1 | Exact package names on real hardware (Meet, Muse, RustDesk, …) | Read installed packages on the pilot phone; record per-device registry | Registry in executor config matches; every `launch` target verified |
 | B2 | Launch behavior on a locked phone | Fire `launch meet` while locked; unlock minutes later | Nothing weird on the lock screen; app is foreground (or predictably not) after unlock; behavior documented for the family runbook |
-| B3 | Announce quality | Trigger each announced command class (not `status report`, PROTOCOL §5 step 4); is the banner/TTS understandable and does it name the channel? | A bystander can say afterwards who asked for what |
+| B3 | Announce quality | Trigger each announced command class (not `status report`, PROTOCOL §5 step 4); is the banner/TTS understandable and does it name the channel, and for family commands the member who asked? | A bystander can say afterwards who asked for what |
 | B4 | STOP controls | Disable family channel on-phone; fire family (every member's topic) + owner commands; reboot; repeat | Family dead instantly for every member, owner alive; states survive reboot; re-enable is owner-only and local |
 | B5 | Log integrity | Run a mixed day of commands | On-phone log complete, timestamped, matches ack receipts (past 5 stale messages in a reconnect backlog, the log counts the receipts not sent) |
 | B6 | Malformed-input safety | Publish junk bodies, near-miss commands, oversized bodies, wrong-topic messages | Zero actions taken; `err unknown-command` receipts for junk on a command topic, no receipt for other topics (PROTOCOL §5) |

@@ -30,7 +30,7 @@ rollout decisions) is also the server operator.
 | Component | Job |
 |---|---|
 | Muse app | The owner's front door: voice or text conversation with their Muse. |
-| Bridge executor (Tasker pilot → native `muse-android-bridge` app) | Implements `PROTOCOL.md`: subscribes to the two command topics, executes the whitelist, announces + logs, provides the on-phone STOP controls. |
+| Bridge executor (Tasker pilot → native `muse-android-bridge` app) | Implements `PROTOCOL.md`: subscribes to the owner topic plus one topic per family member, executes the whitelist, announces + logs, provides the on-phone STOP controls. |
 | RustDesk (host mode) | The screen-and-control endpoint. Service stays OFF until the owner starts it — starting it *is* the request for a control session. |
 
 ### 3.2 Shared family infrastructure (the server operator's home server)
