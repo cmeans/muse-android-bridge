@@ -558,12 +558,14 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
      * the Handler timer stops in deep sleep and an unlock can run past the deadline. Returns
      * the event the request was resolved as, or null when nothing was resolved: no request, or
      * another one than [eventId]. A launch (OPEN only) takes [runLock] after [confirmLock] is
-     * released, never inside it. A TIMEOUT on a stopped bridge does nothing: its receipt could
-     * no longer be sent, and the stored request is answered as RESTARTED at the next start.
+     * released, never inside it. On a stopped bridge nothing resolves (null): a TIMEOUT's receipt
+     * could no longer be sent, and an OPEN racing onDestroy would launch with its receipt
+     * dropped. `running` is read under [confirmLock], which onDestroy takes after clearing it,
+     * so the stored request stays for RESTARTED at the next start.
      */
     private fun resolveConfirm(event: ConfirmEvent, eventId: String?): ConfirmEvent? {
         val (pending, resolvedAs, outcome) = synchronized(confirmLock) {
-            if (event == ConfirmEvent.TIMEOUT && !running) return null
+            if (!running) return null
             val p = readPending() ?: return null
             val e = effectiveEvent(p, event, SystemClock.elapsedRealtime())
             val o = confirmOutcome(p, e, eventId ?: p.id) ?: return null
@@ -584,14 +586,18 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     private fun openConfirmed(id: String) {
         try {
             confirms.execute {
-                // shutdown() still runs queued tasks: a stopped bridge never launches, and the
-                // stored request stays for RESTARTED at the next start.
+                // shutdown() still runs queued tasks. A bridge stopped before the tap is resolved
+                // never launches: resolveConfirm reads `running` under the confirm lock, and the
+                // stored request stays for RESTARTED at the next start. One stopped after that,
+                // during the 5 s launch check, has launched already; its receipt is then logged as
+                // not sent (ack).
                 if (!running) return@execute
                 // Belt and braces: STOP withdraws the request itself, but nothing launches under STOP.
                 val stop = stopState()
                 val event = if (stop.all || stop.family) ConfirmEvent.STOPPED else ConfirmEvent.OPEN
-                // Ended already, or ended now because the tap came past the deadline.
-                if (resolveConfirm(event, id) != event) requestEnded()
+                // Ended already, or ended now because the tap came past the deadline. A stop in
+                // between resolves nothing, and the request hasn't ended: no word then.
+                if (resolveConfirm(event, id) != event && running) requestEnded()
             }
         } catch (_: java.util.concurrent.RejectedExecutionException) {
             // The bridge is stopping; the request is answered at the next start.
