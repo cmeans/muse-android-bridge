@@ -1,12 +1,11 @@
 name: PR Behind Main
 
 # Labels open PRs whose branch is behind main (`Behind main`) or that can no
-# longer merge cleanly (`Merge conflict`). Copied from mcp-synology (#273, #276).
-# main's ruleset here doesn't require up-to-date branches (as of 2026-11-15), so
-# `Behind main` is a notice, not a merge block: Dev's merge rule (claude-dev
-# CLAUDE.md, handoff step 6) still updates a PR that's behind before merging.
-# `Behind main` doesn't hold up QA: a review stays valid across a clean merge of
-# main, so Dev updates the branch before merging. `Merge conflict` does: resolving
+# longer merge cleanly (`Merge conflict`, rebase needed) (mcp-synology #273).
+# This private repo can't have a ruleset requiring up-to-date branches, so
+# `Behind main` is advice here (claude-dev's handoff step 6 still has Dev update
+# such a PR before merging, since its CI ran on an older main). It doesn't hold
+# up QA: a review stays valid across a clean merge of main. `Merge conflict` does: resolving
 # it changes the diff, so this removes `Ready for QA` when it adds the label (and
 # pr-labels-ci.yml / pr-labels.yml don't promote while it's there). Fixing the
 # conflict takes a push, which restarts Awaiting CI -> Ready for QA. That is the

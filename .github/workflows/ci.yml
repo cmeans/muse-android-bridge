@@ -15,11 +15,26 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # NOTE: pr-labels.yml and pr-labels-ci.yml find this workflow by its name
-  # ("CI") and file (ci.yml). If either is renamed, update them too.
-  # This job's name ("android") is meant to be a required check in main's
-  # ruleset: if it is renamed, update the ruleset, or every PR waits on a
-  # check that never comes.
+  # NOTE: pr-labels-ci.yml triggers on this workflow by name ("CI"), and
+  # .github/scripts/pr-checks-state.sh judges it by file (ci.yml), every job
+  # of it. If either is renamed, update them too.
+  # The job names ("android", "workflows") are meant to be required checks in
+  # main's ruleset: if one is renamed, update the ruleset, or every PR waits
+  # on a check that never comes.
+
+  # The label and QA Gate workflow scripts against a fake gh (tests/workflows,
+  # ported from mcp-phone-commands), on whatever jq and yq ubuntu-latest has,
+  # since the workflows run on them too.
+  workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Workflow tests
+        run: bash tests/run.sh
+
   android:
     runs-on: ubuntu-latest
     timeout-minutes: 30

@@ -1,17 +1,8 @@
 name: PR Label Automation
 
-# Label transitions triggered by PR events (push, label, unlabel).
-# Promotion when CI finishes lives in pr-labels-ci.yml (workflow_run trigger).
-# Adapted from muse-field-kit (itself from mcp-clipboard and mcp-synology).
-# Here a push or a reopen also removes Muse Approved and Muse Failed: Muse
-# reviewed the old head, and qa-gate.yml needs Muse Approved on the current
-# one. Adding one Muse verdict removes the other (on-label), as mcp-phone-commands
-# does, without its event ordering: qa-gate.yml fails closed while both are on.
-#
-# Fork PRs: this repo is private, so whether a fork's PR runs these jobs, and
-# with what token, depends on the repository's Actions fork settings. With a
-# read-only token none of them can label it, and the maintainer labels it by
-# hand (QA Gate then posts no status at all, which labels can't fix).
+# Handles label transitions triggered by PR events (open, push, reopen, label, unlabel). on-label
+# also posts the QA Gate status after it removes Muse Approved.
+# Labeling on CI completion lives in pr-labels-ci.yml (separate workflow_run trigger).
 on:
   pull_request:
     branches: [main]
@@ -19,14 +10,17 @@ on:
 
 permissions:
   pull-requests: write
+  # on-unlabel and on-label have their own blocks. These two remain for on-push, unnarrowed since
+  # that can only be tried on a real run.
   actions: read
+  contents: read
 
 jobs:
-  # A new push resets the PR to Awaiting CI and removes stale QA/workflow
-  # labels. Dev Active stays (it coexists with Awaiting CI: CI runs, but
-  # won't promote until Dev Active is removed). A reopen too: commits pushed
-  # while a PR was closed may come with no synchronize event, and approvals
-  # from before the close mustn't carry over to them.
+  # When a PR is opened, reopened or new commits are pushed, reset to Awaiting CI.
+  # Removes stale QA/workflow labels. Keeps Dev Active if present (coexists
+  # with Awaiting CI — dev is still working, CI runs but won't promote).
+  # Reopened too (#4): commits pushed while a PR is closed may come with no synchronize event,
+  # and approvals from before the close must not carry over to them.
   on-push:
     if: >-
       github.event.action == 'opened'
@@ -37,13 +31,13 @@ jobs:
       - name: Reset labels on new push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ACTION: ${{ github.event.action }}
-          PR: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
         run: |
-          # Read now, not from the event: adding Dev Active just before a push
-          # removes Awaiting CI in on-label while this runs, and the event's
-          # stale list would leave the PR with no workflow label at all.
+          PR=${{ github.event.pull_request.number }}
+          REPO=${{ github.repository }}
+
+          # Read now, not from the event: adding Dev Active just before a push removes Awaiting
+          # CI in on-label while this runs, and the event's stale list then left the PR with no
+          # label at all (mcp-synology #565).
           PR_LABELS=$(gh pr view "$PR" --repo "$REPO" --json labels --jq '[.labels[].name]')
 
           HAD_QA_ACTIVE=false
@@ -51,101 +45,85 @@ jobs:
             HAD_QA_ACTIVE=true
           fi
 
+          # Remove stale workflow labels (coalesced into one API call)
           REMOVE=""
-          for LABEL in "Ready for QA" "Ready for QA Signoff" "QA Approved" "QA Active" "QA Failed" "CI Failed" "Muse Approved" "Muse Failed"; do
+          # Muse Approved and Muse Failed too: this repo's gate needs Muse's verdict on the new commit.
+          for LABEL in "Ready for QA" "Ready for QA Signoff" "QA Approved" "QA Active" "QA Failed" "CI Failed" \
+            "Muse Approved" "Muse Failed"; do
             if echo "$PR_LABELS" | grep -q "\"$LABEL\""; then
-              REMOVE="${REMOVE:+$REMOVE,}$LABEL"
+              if [ -n "$REMOVE" ]; then
+                REMOVE="$REMOVE,$LABEL"
+              else
+                REMOVE="$LABEL"
+              fi
             fi
           done
           if [ -n "$REMOVE" ]; then
             gh pr edit "$PR" --repo "$REPO" --remove-label "$REMOVE"
           fi
 
+          # Add Awaiting CI (unless already present).
+          # Dev Active is NOT removed — it coexists with Awaiting CI.
           if ! echo "$PR_LABELS" | grep -q '"Awaiting CI"'; then
             gh pr edit "$PR" --repo "$REPO" --add-label "Awaiting CI"
           fi
 
+          # If QA was actively reviewing, notify via comment
           if [ "$HAD_QA_ACTIVE" = true ]; then
-            if [ "$ACTION" = reopened ]; then WHAT="PR reopened"; else WHAT="New commits pushed"; fi
+            if [ "${{ github.event.action }}" = reopened ]; then
+              WHAT="PR reopened"
+            else
+              WHAT="New commits pushed"
+            fi
             gh pr comment "$PR" --repo "$REPO" \
               --body "$WHAT while QA was active. QA review invalidated — resetting to Awaiting CI."
           fi
 
-  # Dev Active removed: if CI already passed on the head commit, promote
-  # straight to Ready for QA; if it failed, CI Failed; if it's still running,
-  # Awaiting CI stays and pr-labels-ci.yml promotes when it completes.
+  # When Dev Active is removed manually, check whether the head commit's CI
+  # run already passed. If yes, promote straight to Ready for QA; if a job
+  # failed, set CI Failed; if it's still running, Awaiting CI stays and
+  # pr-labels-ci.yml promotes when it completes. CodeQL's check counts too (mcp-synology #578).
+  # (A completed run whose jobs have no result recorded yet, or a CodeQL check
+  # with none, also leaves Awaiting CI; pr-labels-recheck.yml checks it again.)
+  # Nothing changes if Dev Active was added back during the wait.
   on-unlabel:
     if: >-
       github.event.action == 'unlabeled'
       && github.event.label.name == 'Dev Active'
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      actions: read
+      checks: read  # CodeQL's check run
+      contents: read
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Transition after Dev Active removed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          # Labels first, head second: a push between the two reads then
-          # shows up as a moved head, and this run stops.
-          PR_LABELS=$(gh pr view "$PR" --repo "$REPO" --json labels --jq '[.labels[].name]')
-          NOW=$(gh pr view "$PR" --repo "$REPO" --json headRefOid --jq '.headRefOid // ""')
-          [ -n "$NOW" ] || { echo "could not read the PR's head"; exit 1; }
-          if [ "$NOW" != "$HEAD_SHA" ]; then
-            # A push landed after the unlabel: its own on-push run sets
-            # Awaiting CI, and this event's head's CI result is stale.
-            echo "PR moved to $NOW — not promoting for $HEAD_SHA"
-            exit 0
-          fi
-          if echo "$PR_LABELS" | grep -q '"Dev Active"'; then
-            echo "Dev Active is back — nothing to do"
-            exit 0
-          fi
-          # Dev Active came off without a push: a verdict or a review in
-          # progress stands, and promoting beside it would leave conflicting
-          # labels (Ready for QA next to QA Approved, with QA Gate green).
-          # Merge conflict too: a conflicted diff isn't ready for review
-          # (pr-behind-main.yml).
-          for LABEL in "QA Active" "QA Failed" "Ready for QA Signoff" "QA Approved" "Merge conflict"; do
-            if echo "$PR_LABELS" | grep -q "\"$LABEL\""; then
-              echo "$LABEL present — not promoting"
-              exit 0
-            fi
-          done
-          # The latest CI run on the head commit; a run still in progress has
-          # no conclusion yet.
-          CONCLUSION=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$HEAD_SHA&event=pull_request" \
-            --jq '.workflow_runs[0] | if . == null then "" elif .status != "completed" then "" else .conclusion end')
+        # ADOPT: Dev Active's addition removed Awaiting CI, so there may be no workflow label left.
+        run: ADOPT=1 bash .github/scripts/pr-labels-settle.sh "$PR" "$HEAD_SHA"
 
-          REMOVE=""
-          for LABEL in "Awaiting CI" "CI Failed"; do
-            if echo "$PR_LABELS" | grep -q "\"$LABEL\""; then
-              REMOVE="${REMOVE:+$REMOVE,}$LABEL"
-            fi
-          done
-          case "$CONCLUSION" in
-            success)
-              if [ -n "$REMOVE" ]; then gh pr edit "$PR" --repo "$REPO" --remove-label "$REMOVE"; fi
-              gh pr edit "$PR" --repo "$REPO" --add-label "Ready for QA"
-              ;;
-            failure|timed_out)
-              if [ -n "$REMOVE" ]; then gh pr edit "$PR" --repo "$REPO" --remove-label "$REMOVE"; fi
-              gh pr edit "$PR" --repo "$REPO" --add-label "CI Failed"
-              ;;
-            *)
-              if ! echo "$PR_LABELS" | grep -q '"Awaiting CI"'; then
-                gh pr edit "$PR" --repo "$REPO" --add-label "Awaiting CI"
-              fi
-              ;;
-          esac
-
-  # A workflow label was added: remove the labels it replaces.
+  # When a workflow label is added, clean up labels that no longer apply.
+  # Only runs for labels that have cleanup rules.
   on-label:
     if: >-
       github.event.action == 'labeled'
       && contains(fromJSON('["Ready for QA","QA Active","Dev Active","Ready for QA Signoff","QA Failed","QA Approved","Muse Approved","Muse Failed"]'), github.event.label.name)
     runs-on: ubuntu-latest
+    # The Muse cases page through the PR's events and can wait 10 s for them.
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      actions: read
+      contents: read
+      issues: read  # the PR's labeled events, to order the Muse verdicts (#8)
+      statuses: write  # the QA Gate status, after removing Muse Approved
     steps:
       - name: Clean up stale labels
         env:
@@ -153,15 +131,143 @@ jobs:
           ADDED_LABEL: ${{ github.event.label.name }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
+          EVENT_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
-          # Read now, not from the event, as on-push and on-unlabel do: labels
-          # changed since the event would otherwise be missed.
-          PR_LABELS=$(gh pr view "$PR" --repo "$REPO" --json labels --jq '[.labels[].name]')
+          set -euo pipefail
 
+          # Read now, not only from the event (#4): the label that started this run may have been
+          # removed since, and then nothing it implies applies. Acting on the event's list alone
+          # let a Muse Failed added and taken off within seconds still remove Muse Approved.
+          # (The Muse cases below use both lists.)
+          PR_LABELS=$(gh pr view "$PR" --repo "$REPO" --json labels --jq '[.labels[].name]')
+          # Both lists in the log, so a reader can tell which one a removal followed.
+          echo "Added: $ADDED_LABEL; event's labels: $EVENT_LABELS; live labels: $PR_LABELS"
+          if ! echo "$PR_LABELS" | grep -q "\"$ADDED_LABEL\""; then
+            echo "$ADDED_LABEL is no longer on #$PR; nothing to clean up"
+            exit 0
+          fi
+
+          # One failed removal (an API error, say; removing a label that's already off succeeds)
+          # mustn't skip the others; the job still fails at the end so the failure shows.
+          FAILED=0
           remove_if_present() {
             if echo "$PR_LABELS" | grep -q "\"$1\""; then
-              gh pr edit "$PR" --repo "$REPO" --remove-label "$1"
+              if ! gh pr edit "$PR" --repo "$REPO" --remove-label "$1"; then
+                echo "Removing $1 from #$PR failed"
+                FAILED=1
+              fi
             fi
+          }
+
+          # Removing Muse Approved here uses GITHUB_TOKEN, which never starts qa-gate.yml. A gate
+          # run that read the labels before the removal (the one for a Muse Failed taken off
+          # again, say) can have posted success, and nothing would replace it. So post the gate
+          # status from the labels as they are after the removal. Never success from here:
+          # whatever re-added Muse Approved started a gate run of its own, which decides.
+          # The wording and the labels that count are copied from qa-gate.yml; change both.
+          gate_after_muse_removal() {
+            local pr_json head missing
+            pr_json=$(gh api "repos/$REPO/pulls/$PR")
+            # -e: a reply with no head (null) is a failure, not a moved head.
+            head=$(jq -er '.head.sha' <<< "$pr_json")
+            if [ "$head" != "$EVENT_SHA" ]; then
+              echo "Head moved to $head; its own runs set QA Gate"
+              return 0
+            fi
+            missing=$(jq -r '[.labels[].name] as $l | [
+                (if ($l | index("QA Approved")) == null then "QA Approved (maintainer)" else empty end),
+                (if ($l | index("Muse Approved")) == null then "Muse Approved" else empty end),
+                (if ($l | index("Muse Failed")) != null then "Muse Failed removed" else empty end)
+              ] | join(", ")' <<< "$pr_json")
+            if [ -z "$missing" ]; then
+              echo "Muse Approved is back on; its own QA Gate run decides"
+              return 0
+            fi
+            gh api "repos/$REPO/statuses/$EVENT_SHA" --method POST \
+              -f state=pending -f description="Waiting for: $missing" -f context="QA Gate" > /dev/null
+            echo "QA Gate: pending on $EVENT_SHA (Waiting for: $missing)"
+          }
+
+          # Muse's verdicts: was the other one ($1) added clearly before the one that started this
+          # run? Prints "before" (more than 10 s earlier), "not-before" (within 10 s, or later:
+          # added together, say, or re-added since) or "unknown" (a read failed, a time didn't
+          # parse, or a label's time was still missing after two re-reads). A re-added label's own
+          # run removes the other only if the re-add came more than 10 s later. The event's list
+          # alone can't tell "on before" from "added together": a labeled event's list is a
+          # snapshot from when its label was added (#8, checked on #10), and one call adding both
+          # lists both in each event. The window is there because GitHub stamps the labels of one
+          # call one by one, and they can land in different seconds; whatever second each lands
+          # in, both runs read "not-before" and both labels stay. Two real verdicts within 10 s
+          # of each other also both stay, and the gate stays pending: that fails closed.
+          # Each label's latest labeled event counts; times are compared as numbers
+          # (fromdateiso8601, which refuses a format it doesn't know, so that fails as unknown).
+          # Both labels are on, so each one's latest labeled event must be no older than its
+          # latest unlabeled event. If it is older, the events API is behind on a re-add, and
+          # the older time would make a re-added label look earlier than it is. Then the time
+          # counts as missing, like a label with no labeled event yet: it's read again, and if
+          # it's still missing, the order is unknown.
+          # One case this can't catch: a label removed and re-added within seconds, with the
+          # events API behind on both the removal and the re-add. Its old labeled time then looks
+          # like a label that's been on since, which is indistinguishable from the events alone.
+          other_added_before() {
+            local events out order tries=0
+            while :; do
+              order=unknown
+              if events=$(gh api --paginate "repos/$REPO/issues/$PR/events?per_page=100" \
+                  --jq '.[] | select(.event == "labeled" or .event == "unlabeled")
+                    | {event, label: .label.name, created_at}'); then
+                # Line 1 is the verdict; line 2, the times it came from, goes to the log (stderr),
+                # as do errors.
+                if out=$(jq -rn --arg this "$ADDED_LABEL" --arg other "$1" \
+                  --slurpfile events <(printf '%s\n' "$events") '
+                  def last($l; $e): [$events[] | select(.label == $l and .event == $e)
+                    | .created_at | fromdateiso8601] | max;
+                  def info($l): {l: $l, on: last($l; "labeled"), off: last($l; "unlabeled")};
+                  def at: if .on == null or (.off != null and .off > .on) then null else .on end;
+                  def show: if .on == null then "\(.l): no labeled event"
+                    elif at == null
+                    then "\(.l): labeled \(.on | todate), older than its removal at \(.off | todate)"
+                    else "\(.l): labeled \(.on | todate)" end;
+                  (info($this)) as $ti | (info($other)) as $oi
+                  | ($ti | at) as $t | ($oi | at) as $o
+                  | (if $t == null or $o == null then "missing"
+                      elif $o < $t - 10 then "before" else "not-before" end),
+                    "Times read: \($ti | show); \($oi | show)"'); then
+                  order=${out%%$'\n'*}
+                  echo "${out#*$'\n'}" >&2
+                else
+                  order=unknown
+                fi
+              else
+                echo "Reading #$PR's events failed" >&2
+              fi
+              # Re-read only a missing time; a failed read or parse is final.
+              if [ "$order" != missing ] || [ "$tries" -ge 2 ]; then break; fi
+              tries=$((tries + 1))
+              sleep 5
+            done
+            if [ "$order" = missing ]; then
+              echo "No usable labeled time after $tries re-reads (see the last \"Times read\" line)" >&2
+              order=unknown
+            fi
+            # The run's labels were read at its start, up to 10 s and several reads ago. Read them
+            # again before acting on any verdict: if either Muse label has been taken off since
+            # (a label taken off looks like a lagging re-add, and a re-read can then turn a
+            # missing time into "before"), there's nothing left to decide. If this read fails,
+            # the order is unknown, and each run fails closed.
+            local live
+            if ! live=$(gh pr view "$PR" --repo "$REPO" --json labels --jq '[.labels[].name]'); then
+              echo "Re-reading #$PR's labels failed" >&2
+              order=unknown
+            elif ! grep -q "\"$ADDED_LABEL\"" <<< "$live"; then
+              echo "$ADDED_LABEL is no longer on #$PR; nothing to clean up" >&2
+              order=gone
+            elif ! grep -q "\"$1\"" <<< "$live"; then
+              echo "$1 is no longer on #$PR; nothing to clean up" >&2
+              order=gone
+            fi
+            echo "$order"
           }
 
           case "$ADDED_LABEL" in
@@ -175,7 +281,6 @@ jobs:
             "Dev Active")
               remove_if_present "QA Failed"
               remove_if_present "CI Failed"
-              remove_if_present "Muse Failed"
               remove_if_present "Awaiting CI"
               remove_if_present "Ready for QA"
               ;;
@@ -189,12 +294,68 @@ jobs:
             "QA Approved")
               remove_if_present "Ready for QA Signoff"
               ;;
-            # One Muse verdict replaces the other. qa-gate.yml fails closed
-            # while both are on (see its comment).
+            # This repo only: Muse's two verdicts exclude each other, and the later one wins. So
+            # remove the other only if it was on before this one was added (it's in the event's
+            # list, and its labeled event is more than 10 s earlier) and is still on now. With the
+            # live list alone, the run for an earlier verdict could remove a later one added
+            # seconds after it. Added together (within 10 s, #8): neither run removes anything,
+            # both stay, and qa-gate.yml stays pending until one is taken off. When the order
+            # can't be read, each run fails closed and its job fails: Muse Approved's leaves Muse
+            # Failed on, Muse Failed's removes Muse Approved. If either Muse label has been taken
+            # off by the time the order is read, there's nothing to decide, and it does nothing.
             "Muse Approved")
-              remove_if_present "Muse Failed"
+              if echo "$EVENT_LABELS" | grep -q '"Muse Failed"' \
+                && echo "$PR_LABELS" | grep -q '"Muse Failed"'; then
+                ORDER=$(other_added_before "Muse Failed")
+                echo "Was Muse Failed added more than 10 s before Muse Approved? $ORDER"
+                case "$ORDER" in
+                  before) remove_if_present "Muse Failed" ;;
+                  not-before)
+                    echo "Within 10 s of each other, or Muse Failed is newer; leaving both on." \
+                      "Remove the verdict that doesn't apply."
+                    ;;
+                  gone) ;;
+                  *)
+                    echo "Couldn't read when the Muse labels were added; leaving Muse Failed on"
+                    FAILED=1
+                    ;;
+                esac
+              fi
               ;;
             "Muse Failed")
-              remove_if_present "Muse Approved"
+              ORDER=unread
+              if echo "$EVENT_LABELS" | grep -q '"Muse Approved"' \
+                && echo "$PR_LABELS" | grep -q '"Muse Approved"'; then
+                ORDER=$(other_added_before "Muse Approved")
+                echo "Was Muse Approved added more than 10 s before Muse Failed? $ORDER"
+                if [ "$ORDER" = not-before ]; then
+                  echo "Within 10 s of each other, or Muse Approved is newer; leaving both on." \
+                    "Remove the verdict that doesn't apply."
+                elif [ "$ORDER" = unknown ]; then
+                  echo "Couldn't read when the Muse labels were added; removing Muse Approved"
+                fi
+              fi
+              if [ "$ORDER" = before ] || [ "$ORDER" = unknown ]; then
+                # Fail closed from here on, as qa-gate.yml does: the removal may have landed even
+                # if its call failed, so any failure (the removal, a read, a reply that isn't
+                # JSON) posts pending, or an earlier success would stand. If that post fails too,
+                # the failed job is the only signal.
+                trap 'rc=$?; if [ "$rc" -ne 0 ]; then
+                    echo "Failed after removing Muse Approved (exit $rc); posting QA Gate pending"
+                    gh api "repos/$REPO/statuses/$EVENT_SHA" --method POST -f state=pending \
+                      -f description="QA Gate check failed; change a label to retry" \
+                      -f context="QA Gate" > /dev/null
+                  fi; exit "$rc"' EXIT
+                gh pr edit "$PR" --repo "$REPO" --remove-label "Muse Approved"
+                gate_after_muse_removal
+                # An unreadable order fails the job, but the trap mustn't replace the pending
+                # just posted, which names what's missing, with "change a label to retry":
+                # re-adding Muse Approved to retry would override Muse Failed.
+                if [ "$ORDER" = unknown ]; then
+                  trap - EXIT
+                  FAILED=1
+                fi
+              fi
               ;;
           esac
+          exit "$FAILED"

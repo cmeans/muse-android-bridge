@@ -1,0 +1,43 @@
+name: PR Label Recheck
+
+# A green PR can strand on Awaiting CI when GitHub's listings lag behind the last CI event,
+# since no later event checks again (mcp-synology #549 and #339), and CodeQL can fail after a
+# PR is promoted, with no event at all (mcp-synology #578). This checks on a schedule, with the same script as
+# pr-labels-ci.yml. See .github/scripts/pr-labels-recheck.sh.
+#
+# LIMITATION: schedule runs from the default branch (main), so changes to this file take effect only
+# after merge. GitHub can delay a scheduled run.
+on:
+  schedule:
+    # Hourly, not every 15 minutes as in mcp-synology: this repo is private, and every
+    # 15 minutes would take about 2,900 of the free plan's 2,000 Actions minutes a month.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+# No token permissions by default; the job asks only for what it uses (mcp-synology #203).
+permissions: {}
+
+jobs:
+  recheck:
+    if: github.repository == 'cmeans/mcp-phone-commands'
+    runs-on: ubuntu-latest
+    # A hung call mustn't hold the concurrency group below for hours.
+    timeout-minutes: 15
+    # A run that outlasts the interval shouldn't overlap the next.
+    concurrency:
+      group: pr-labels-recheck
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Recheck labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: bash .github/scripts/pr-labels-recheck.sh
