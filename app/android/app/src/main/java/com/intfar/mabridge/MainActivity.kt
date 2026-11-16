@@ -382,7 +382,7 @@ class MainActivity : Activity() {
         // event the owner cares about out of a short window.
         val lines = BridgeLog.lastLines(this, RECENT_SCAN_LINES)
         val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
-        val items = lines.asReversed().asSequence().mapNotNull { recentItemFor(it, today = today) }.take(5).toList()
+        val items = lines.asReversed().asSequence().mapNotNull { recentItemFor(it, today = today, members = emptyList()) }.take(5).toList()
         if (items.isEmpty()) {
             val empty = if (lines.isEmpty()) "Nothing yet." else "Nothing in the last ${lines.size} log lines."
             recentList.addView(ui.text(empty, 15f, R.color.text_muted).apply {

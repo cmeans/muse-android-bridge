@@ -114,6 +114,70 @@ class OwnerScreenTest {
         assertEquals("Opened zoom · asked by family", item("ok (family): launch zoom")?.text)
     }
 
+    private val alex = listOf(FamilyMember("m1", "Alex"))
+    private fun memberItem(text: String, members: List<FamilyMember> = alex) =
+        recentItemFor("2026-11-13 09:41:07 | $text", members = members)
+
+    @Test fun askedByNamesMember() {
+        assertEquals("your Muse", askedBy(Source(Channel.OWNER, null)))
+        assertEquals("Alex", askedBy(Source(Channel.FAMILY, FamilyMember("m1", "Alex"))))
+        assertEquals("your Muse", askedByTag("owner", alex))
+        assertEquals("family", askedByTag("family", alex))
+        assertEquals("Alex", askedByTag("family/m1", alex))
+        assertEquals("a family member", askedByTag("family/m2", alex))
+    }
+
+    @Test fun oldFamilyLinesStillRead() {
+        assertEquals("Opened Meet · asked by family", memberItem("ok (family): launch meet")?.text)
+    }
+
+    @Test fun memberLineNamed() {
+        assertEquals("Opened Meet · asked by Alex", memberItem("ok (family/m1): launch meet")?.text)
+    }
+
+    @Test fun removedMemberLine() {
+        assertEquals("Opened Meet · asked by a family member", memberItem("ok (family/m1): launch meet", emptyList())?.text)
+    }
+
+    @Test fun rateLimitedMemberLine() {
+        assertEquals("Refused, too many: Meet · Alex", memberItem("rate-limited (family/m1): launch meet")?.text)
+    }
+
+    @Test fun confirmAskedResult() {
+        val r = memberItem("confirm-asked (family/m1): launch rustdesk")!!
+        assertEquals("Asked to open RustDesk, waiting for you · Alex", r.text)
+        assertFalse(r.refused)
+    }
+
+    @Test fun declinedResult() {
+        val r = memberItem("declined (family/m1): launch rustdesk")!!
+        assertEquals("You said not now: RustDesk · Alex", r.text)
+        assertTrue(r.refused)
+    }
+
+    @Test fun notConfirmedResult() {
+        val r = memberItem("not-confirmed (family/m1): launch rustdesk (timeout)")!!
+        assertEquals("Not opened, no answer: RustDesk · Alex", r.text)
+        assertTrue(r.refused)
+    }
+
+    @Test fun pendingResult() {
+        val r = memberItem("pending (family/m1): launch rustdesk")!!
+        assertEquals("Refused, already waiting: RustDesk · Alex", r.text)
+        assertTrue(r.refused)
+    }
+
+    @Test fun rustdeskAndPromptWording() {
+        assertEquals("RustDesk: Alex is asking to open it", rustdeskRequestAnnouncement("Alex"))
+        assertEquals("Alex asked to open RustDesk", confirmPromptTitle("Alex"))
+        assertEquals("Only open it if you asked Alex for help.", confirmPromptText("Alex"))
+    }
+
+    @Test fun staleMemberLineStillChecksCommand() {
+        assertEquals("Ignored an old command: Meet · Alex", memberItem("dropped-stale (family/m1, 130s old): launch meet")?.text)
+        assertEquals("Ignored an old message · Alex", memberItem("dropped-stale (family/m1, 130s old): hello there")?.text)
+    }
+
     private val old = Setup("https://ntfy.example.com", "pilot-phone", "pilot-phone-phone")
 
     @Test fun serverOrDeviceChangeNeedsConfirm() {

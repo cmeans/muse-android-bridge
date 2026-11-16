@@ -12,6 +12,29 @@ fun hostOf(server: String): String =
 /** Who sent a command, in the owner's words: the owner channel is the owner's own Muse. */
 fun askedBy(channel: String): String = if (channel == "owner") "your Muse" else "family"
 
+/** Who sent a command, in the owner's words: the owner's own Muse, or the family member's name. */
+fun askedBy(source: Source): String = source.member?.name ?: "your Muse"
+
+/**
+ * Who a log line's source tag names, in the owner's words: `owner` is the owner's own Muse,
+ * `family` (lines written before per-member topics) stays "family", and `family/<slug>` is the
+ * member's name, or "a family member" once that slug is no longer set up.
+ */
+fun askedByTag(tag: String, members: List<FamilyMember>): String = when {
+    tag == "owner" -> "your Muse"
+    tag.startsWith("family/") -> members.firstOrNull { it.slug == tag.removePrefix("family/") }?.name ?: "a family member"
+    else -> "family"
+}
+
+/** The announcement for a family member's RustDesk request, shown while the owner decides. */
+fun rustdeskRequestAnnouncement(name: String): String = "RustDesk: $name is asking to open it"
+
+/** The title of the confirm prompt for a family member's RustDesk request. */
+fun confirmPromptTitle(name: String): String = "$name asked to open RustDesk"
+
+/** The body of the confirm prompt: only open RustDesk for someone the owner asked for help. */
+fun confirmPromptText(name: String): String = "Only open it if you asked $name for help."
+
 /** The status card's state: its look follows [kind]. */
 enum class StatusKind { OK, STOPPED, OFF }
 
@@ -59,15 +82,21 @@ data class RecentItem(val time: String, val text: String, val refused: Boolean =
 
 private val LOG_LINE = Regex("""(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2}):\d{2} \| (.*)""")
 private val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-private val OUTCOME = Regex("""([a-z-]+) \((owner|family)(?:, [^)]*)?\): (.*)""")
+private val OUTCOME = Regex("""([a-z-]+) \((owner|family(?:/[a-z0-9-]+)?)(?:, [^)]*)?\): (.*)""")
 
 /**
  * A bridge.log line as the owner reads it, or null for lines the short list leaves out
  * (connection chatter, duplicates, receipts): those stay in "Show all activity".
  * [today] is the phone's date as `yyyy-MM-dd`: lines from another day show their date
  * ("Nov 12, 22:19"), so yesterday's event can't pass for today's. Null shows the time only.
+ * [members] turns a `family/<slug>` tag into the member's name.
  */
-fun recentItemFor(line: String, registry: Registry = PILOT_REGISTRY, today: String? = null): RecentItem? {
+fun recentItemFor(
+    line: String,
+    registry: Registry = PILOT_REGISTRY,
+    today: String? = null,
+    members: List<FamilyMember> = emptyList(),
+): RecentItem? {
     val m = LOG_LINE.matchEntire(line) ?: return null
     val (y, mo, d, hm, text) = m.destructured
     val time = if (today == null || today == "$y-$mo-$d") hm
@@ -75,7 +104,7 @@ fun recentItemFor(line: String, registry: Registry = PILOT_REGISTRY, today: Stri
     plainEvent(text)?.let { return RecentItem(time, it) }
     val o = OUTCOME.matchEntire(text) ?: return null
     val (result, channel, rest) = o.destructured
-    val who = askedBy(channel)
+    val who = askedByTag(channel, members)
     // The command is the start of the rest: details follow after ": " or " (".
     val command = rest.substringBefore(": ").substringBefore(" (")
     val what = describe(command, registry)
@@ -89,12 +118,17 @@ fun recentItemFor(line: String, registry: Registry = PILOT_REGISTRY, today: Stri
         "cannot-launch" -> RecentItem(time, "Couldn't open ${what.name}: Show over other apps is off · $who", refused = true)
         "cannot-announce" -> RecentItem(time, "Not done, notifications are off: ${what.name} · $who", refused = true)
         "blocked" -> RecentItem(time, "Tried to open ${what.name}; it didn't come to the front · $who", refused = true)
+        // The family RustDesk confirm: asked, then declined, timed out or turned away.
+        "confirm-asked" -> RecentItem(time, "Asked to open ${what.name}, waiting for you · $who")
+        "declined" -> RecentItem(time, "You said not now: ${what.name} · $who", refused = true)
+        "not-confirmed" -> RecentItem(time, "Not opened, no answer: ${what.name} · $who", refused = true)
+        "pending" -> RecentItem(time, "Refused, already waiting: ${what.name} · $who", refused = true)
         "failed" -> RecentItem(time, "Failed: ${what.name} · $who", refused = true)
         "not-implemented" -> RecentItem(time, "Not available yet: ${what.name} · $who", refused = true)
         // A stale line logs the message body, whatever it says: name it only when it's a real
         // command, so a sender's text never shows as the owner screen's own words.
         "dropped-stale" -> {
-            val ch = if (channel == "owner") Channel.OWNER else Channel.FAMILY
+            val ch = if (channel.substringBefore('/') == "owner") Channel.OWNER else Channel.FAMILY
             if (parseCommand(command, ch, registry) != null) RecentItem(time, "Ignored an old command: ${what.name} · $who", refused = true)
             else RecentItem(time, "Ignored an old message · $who", refused = true)
         }
