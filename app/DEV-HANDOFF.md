@@ -73,6 +73,14 @@ with the `android-36` platform and build-tools 35.0.0 installed.
 Without an SDK location Gradle stops with "SDK location not found".
 The debug APK lands in `app/build/outputs/apk/debug/`.
 
+**Application id.** The app is `com.intfar.mabridge` (it was
+`org.intfar.mabridge` until the 2026-11 rename). Android treats the two ids as
+different apps, so a new build installs beside an old one instead of
+replacing it, and once both are set up, both bridges run every command. On a phone
+that still has `org.intfar.mabridge`, uninstall it before installing,
+then set the bridge up again (server, password, permissions, battery
+exemption). The phones move over with the release-key build.
+
 Known gaps before any family deployment. On 2026-11-12, PR #4 carried out
 Tasks 1-7 of the executor plan (now `docs/plans/2026-11-12-app-executor-v1.md`
 in the private muse-android-bridge-infra repo): Keystore credential storage,
