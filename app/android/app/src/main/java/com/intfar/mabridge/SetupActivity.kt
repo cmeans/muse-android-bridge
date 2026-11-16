@@ -374,7 +374,8 @@ class SetupActivity : Activity() {
      * preference reads only) is read first, from the setup still stored, and the password is
      * decrypted on the send thread. The request is cleared under [WaitingConfirm.lock], which the
      * bridge's own answers hold too, so exactly one of them sends its receipt. It is sent once:
-     * with no network, or if the app is killed before it goes, it is lost (PROTOCOL §5e). A
+     * with no network it is lost and logged as `receipt failed`; if the app is killed before it
+     * goes, it is lost with no further log line (PROTOCOL §5e). A
      * running bridge's prompt and timer go when the restart after the save stops it; a tap before
      * that finds no request.
      */

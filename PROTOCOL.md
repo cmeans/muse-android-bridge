@@ -256,10 +256,12 @@ e. The pending request is kept across a restart: the next start withdraws it
    and answers `not-confirmed`. A setup save that changes the server or the
    device name withdraws it at once instead, before the new setup is written,
    and answers `not-confirmed` on the old server and ack topic. That receipt
-   is sent once: if the phone has no network then, or the app is killed
-   before it goes, it is lost (the phone logs it). Any other setup save
-   restarts the bridge too, so a waiting request gets `not-confirmed` at that
-   restart, on the unchanged server.
+   is sent once: if the phone has no network then, it is lost and the phone
+   logs `receipt failed`; if the app is killed before it goes, it is lost
+   with no trace beyond the `not-confirmed … (setup changed)` line. Any other
+   setup save restarts a running bridge, which answers a waiting request with
+   `not-confirmed` then, on the unchanged server; a stopped bridge answers it
+   at its next start.
 
 There is exactly one receipt per message, sent when the outcome is known (§6).
 
