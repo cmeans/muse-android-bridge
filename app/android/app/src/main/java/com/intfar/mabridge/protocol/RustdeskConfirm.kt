@@ -45,6 +45,19 @@ fun confirmOutcome(pending: PendingConfirm?, event: ConfirmEvent, eventId: Strin
     }
 }
 
+/**
+ * The event to decide on at [nowMs]: an OPEN or NOT_NOW tap on a request whose deadline has
+ * passed counts as [ConfirmEvent.TIMEOUT], so a late tap (the timer stops in deep sleep, or the
+ * unlock took past the deadline) answers `not-confirmed` and launches nothing. Every other
+ * event, and any event with nothing pending, is unchanged.
+ */
+fun effectiveEvent(pending: PendingConfirm?, event: ConfirmEvent, nowMs: Long): ConfirmEvent =
+    if (pending != null && (event == ConfirmEvent.OPEN || event == ConfirmEvent.NOT_NOW) && isExpired(pending, nowMs)) {
+        ConfirmEvent.TIMEOUT
+    } else {
+        event
+    }
+
 /** Whether [pending] has run out at [nowMs] (same clock as its deadline). */
 fun isExpired(pending: PendingConfirm, nowMs: Long): Boolean = nowMs >= pending.deadlineMs
 

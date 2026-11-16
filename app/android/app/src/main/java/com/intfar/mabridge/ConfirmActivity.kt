@@ -17,6 +17,13 @@ class ConfirmActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Recreated during the unlock (a rotation, say): the first instance already asked, so this
+        // one mustn't send Open again. It finishes, so no invisible activity is left over the
+        // screen; if the first instance's unlock was lost with it, the request times out.
+        if (savedInstanceState != null) {
+            finish()
+            return
+        }
         val id = intent.getStringExtra(BridgeService.EXTRA_CONFIRM_ID)
         val km = getSystemService(KeyguardManager::class.java)
         if (km != null && km.isKeyguardLocked) {

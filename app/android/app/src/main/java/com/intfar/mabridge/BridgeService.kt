@@ -47,6 +47,7 @@ import com.intfar.mabridge.protocol.askedBy
 import com.intfar.mabridge.protocol.confirmOutcome
 import com.intfar.mabridge.protocol.confirmPromptText
 import com.intfar.mabridge.protocol.confirmPromptTitle
+import com.intfar.mabridge.protocol.effectiveEvent
 import com.intfar.mabridge.protocol.hostOf
 import com.intfar.mabridge.protocol.isExpired
 import com.intfar.mabridge.protocol.memberTopic
@@ -191,7 +192,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             // No id never matches a pending request, so the tap counts as on an ended one.
             val id = intent.getStringExtra(EXTRA_CONFIRM_ID) ?: ""
             if (intent.action == ACTION_CONFIRM_DECLINE) {
-                if (!resolveConfirm(ConfirmEvent.NOT_NOW, id)) requestEnded()
+                if (resolveConfirm(ConfirmEvent.NOT_NOW, id) != ConfirmEvent.NOT_NOW) requestEnded()
             } else {
                 openConfirmed(id)
             }
@@ -512,15 +513,19 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
      * The one way a waiting request ends: reads it, decides with confirmOutcome and clears it
      * under [confirmLock], then answers or launches outside it. [eventId] is the request the
      * event is about (a tap's id); null means whichever is stored (timer-less events: STOPPED,
-     * RESTARTED). False when nothing was resolved: no request, or another one than [eventId].
-     * A launch (OPEN only) takes [runLock] after [confirmLock] is released, never inside it.
+     * RESTARTED). A tap (OPEN, NOT_NOW) past the deadline counts as TIMEOUT (effectiveEvent):
+     * the Handler timer stops in deep sleep and an unlock can run past the deadline. Returns
+     * the event the request was resolved as, or null when nothing was resolved: no request, or
+     * another one than [eventId]. A launch (OPEN only) takes [runLock] after [confirmLock] is
+     * released, never inside it.
      */
-    private fun resolveConfirm(event: ConfirmEvent, eventId: String?): Boolean {
-        val (pending, outcome) = synchronized(confirmLock) {
-            val p = readPending() ?: return false
-            val o = confirmOutcome(p, event, eventId ?: p.id) ?: return false
+    private fun resolveConfirm(event: ConfirmEvent, eventId: String?): ConfirmEvent? {
+        val (pending, resolvedAs, outcome) = synchronized(confirmLock) {
+            val p = readPending() ?: return null
+            val e = effectiveEvent(p, event, SystemClock.elapsedRealtime())
+            val o = confirmOutcome(p, e, eventId ?: p.id) ?: return null
             endPending()
-            p to o
+            Triple(p, e, o)
         }
         when (outcome) {
             is ConfirmOutcome.Answer -> {
@@ -529,17 +534,21 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             }
             ConfirmOutcome.Launch -> launchConfirmed(pending)
         }
-        return true
+        return resolvedAs
     }
 
     /** Open RustDesk, on the [confirms] executor: the launch path waits up to 5 s for its check. */
     private fun openConfirmed(id: String) {
         try {
             confirms.execute {
+                // shutdown() still runs queued tasks: a stopped bridge never launches, and the
+                // stored request stays for RESTARTED at the next start.
+                if (!running) return@execute
                 // Belt and braces: STOP withdraws the request itself, but nothing launches under STOP.
                 val stop = stopState()
                 val event = if (stop.all || stop.family) ConfirmEvent.STOPPED else ConfirmEvent.OPEN
-                if (!resolveConfirm(event, id)) requestEnded()
+                // Ended already, or ended now because the tap came past the deadline.
+                if (resolveConfirm(event, id) != event) requestEnded()
             }
         } catch (_: java.util.concurrent.RejectedExecutionException) {
             // The bridge is stopping; the request is answered at the next start.

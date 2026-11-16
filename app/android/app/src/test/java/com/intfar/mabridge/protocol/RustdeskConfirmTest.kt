@@ -67,6 +67,42 @@ class RustdeskConfirmTest {
         ConfirmEvent.values().forEach { assertNull(confirmOutcome(null, it, "Ab12Cd34Ef56")) }
     }
 
+    @Test fun openBeforeTheDeadlineLaunches() {
+        assertEquals(ConfirmEvent.OPEN, effectiveEvent(pending, ConfirmEvent.OPEN, pending.deadlineMs - 1))
+        assertEquals(
+            ConfirmOutcome.Launch,
+            confirmOutcome(pending, effectiveEvent(pending, ConfirmEvent.OPEN, pending.deadlineMs - 1), pending.id),
+        )
+        assertEquals(ConfirmEvent.NOT_NOW, effectiveEvent(pending, ConfirmEvent.NOT_NOW, pending.deadlineMs - 1))
+    }
+
+    @Test fun openAtTheDeadlineIsNotConfirmed() {
+        // The timer runs on the uptime clock and stops in deep sleep: a late tap mustn't launch.
+        assertEquals(
+            ConfirmOutcome.Answer("err launch rustdesk not-confirmed", "not-confirmed (family/m1): launch rustdesk (timeout)"),
+            confirmOutcome(pending, effectiveEvent(pending, ConfirmEvent.OPEN, pending.deadlineMs), pending.id),
+        )
+    }
+
+    @Test fun notNowAtTheDeadlineIsNotConfirmed() {
+        assertEquals(
+            ConfirmOutcome.Answer("err launch rustdesk not-confirmed", "not-confirmed (family/m1): launch rustdesk (timeout)"),
+            confirmOutcome(pending, effectiveEvent(pending, ConfirmEvent.NOT_NOW, pending.deadlineMs + 5_000), pending.id),
+        )
+    }
+
+    @Test fun deadlineDoesNotChangeOtherEvents() {
+        for (e in listOf(ConfirmEvent.TIMEOUT, ConfirmEvent.STOPPED, ConfirmEvent.RESTARTED)) {
+            for (now in listOf(pending.deadlineMs - 1, pending.deadlineMs, pending.deadlineMs + 1)) {
+                assertEquals(e, effectiveEvent(pending, e, now))
+            }
+        }
+    }
+
+    @Test fun effectiveEventWithNothingPendingIsUnchanged() {
+        ConfirmEvent.values().forEach { assertEquals(it, effectiveEvent(null, it, 0L)) }
+    }
+
     @Test fun expiredPendingCountsAsTimeout() {
         assertTrue(isExpired(pending, 1_000_000L))
         assertTrue(isExpired(pending, 1_000_001L))
