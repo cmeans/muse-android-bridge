@@ -1,6 +1,5 @@
 package com.intfar.mabridge
 
-import java.text.Normalizer
 import android.app.Activity
 import android.app.AlertDialog
 import android.os.Bundle
@@ -18,11 +17,12 @@ import com.intfar.mabridge.protocol.MAX_MEMBERS
 import com.intfar.mabridge.protocol.Setup
 import com.intfar.mabridge.protocol.addedMembers
 import com.intfar.mabridge.protocol.encodeMembers
-import com.intfar.mabridge.protocol.memberProblems
 import com.intfar.mabridge.protocol.hostOf
 import com.intfar.mabridge.protocol.isValidServer
 import com.intfar.mabridge.protocol.isValidSlug
+import com.intfar.mabridge.protocol.memberProblems
 import com.intfar.mabridge.protocol.setupChangeFor
+import java.text.Normalizer
 
 /**
  * The helper's setup: server, device name, username, password and family members. It sits behind
@@ -201,17 +201,23 @@ class SetupActivity : Activity() {
         }
         row.addView(idField, ui.matchWidth())
         row.addView(nameField, ui.matchWidth())
-        row.addView(ui.outlineButton("Remove") {
+        val remove = ui.outlineButton("Remove") {
             memberRows.removeView(row)
             memberFields.remove(pair)
             refreshAddMember()
-        }, ui.matchWidth())
+        }
+        remove.tag = REMOVE_TAG
+        row.addView(remove, ui.matchWidth())
         memberRows.addView(row, ui.matchWidth())
         memberFields.add(pair)
         refreshAddMember()
     }
 
     private fun refreshAddMember() {
+        // A distinct label per row for TalkBack, renumbered when a row goes.
+        for (i in 0 until memberRows.childCount) {
+            memberRows.getChildAt(i).findViewWithTag<android.view.View>(REMOVE_TAG)?.contentDescription = "Remove member ${i + 1}"
+        }
         addMember.visibility = if (memberFields.size >= MAX_MEMBERS) android.view.View.GONE else android.view.View.VISIBLE
     }
 
@@ -356,6 +362,7 @@ class SetupActivity : Activity() {
 
     private companion object {
         const val MAX_WIDTH_DP = 560
+        const val REMOVE_TAG = "remove_member"
         const val STATE_MEMBER_SLUGS = "member_slugs"
         const val STATE_MEMBER_NAMES = "member_names"
     }

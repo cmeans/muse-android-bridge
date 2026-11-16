@@ -213,10 +213,10 @@ class OwnerScreenTest {
 
     @Test fun memberRenamedLogged() {
         val a = old.copy(members = listOf(m1))
-        val s = setupChangeFor(a, a.copy(members = listOf(FamilyMember("m1", "Sam"))), false)
+        val s = setupChangeFor(a, a.copy(members = listOf(FamilyMember("m1", "Robin"))), false)
         assertEquals("setup changed: member m1 renamed", s.logLine)
         assertFalse(s.logLine!!.contains("Alex"))
-        assertFalse(s.logLine!!.contains("Sam"))
+        assertFalse(s.logLine!!.contains("Robin"))
     }
 
     @Test fun memberRemovedLogged() {
@@ -225,14 +225,14 @@ class OwnerScreenTest {
     }
 
     @Test fun memberPartsFollowTheOthersInOrder() {
-        val a = old.copy(members = listOf(m1, FamilyMember("m2", "Sam")))
+        val a = old.copy(members = listOf(m1, FamilyMember("m2", "Robin")))
         val b = old.copy(
             username = "other",
-            members = listOf(FamilyMember("m1", "Alexa"), FamilyMember("m3", "Kim")),
+            members = listOf(FamilyMember("m1", "Alexa"), FamilyMember("m3", "Robin")),
         )
         assertEquals(
             "setup changed: username pilot-phone-phone -> other; member m1 renamed; member m3 added; member m2 removed",
-            setupChangeFor(a, b, true.not()).logLine,
+            setupChangeFor(a, b, false).logLine,
         )
     }
 
@@ -243,7 +243,20 @@ class OwnerScreenTest {
 
     @Test fun memberRenameOrRemoveNeedsNoConfirm() {
         val a = old.copy(members = listOf(m1))
-        assertFalse(setupChangeFor(a, a.copy(members = listOf(FamilyMember("m1", "Sam"))), false).needsConfirm)
+        assertFalse(setupChangeFor(a, a.copy(members = listOf(FamilyMember("m1", "Robin"))), false).needsConfirm)
         assertFalse(setupChangeFor(a, old, false).needsConfirm)
+    }
+
+    @Test fun addedMembersListsEachNewIdInOrder() {
+        val new = old.copy(members = listOf(FamilyMember("m2", "Robin"), m1, FamilyMember("m3", "Alexa")))
+        assertEquals(listOf("m2", "m1", "m3"), addedMembers(old, new))
+        assertTrue(setupChangeFor(old, new, false).needsConfirm)
+    }
+
+    @Test fun addedMembersIgnoresRenames() {
+        val a = old.copy(members = listOf(m1))
+        val b = a.copy(members = listOf(FamilyMember("m1", "Robin"), FamilyMember("m2", "Alexa")))
+        assertEquals(listOf("m2"), addedMembers(a, b))
+        assertTrue(setupChangeFor(a, b, false).needsConfirm)
     }
 }
