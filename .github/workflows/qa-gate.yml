@@ -7,7 +7,10 @@ name: QA Gate
 # "QA Gate" (the status context) is meant to be a required check in main's
 # ruleset: if it is renamed, update the ruleset, or every PR waits on a check
 # that never comes.
-# On a fork's PR the token is read-only and no status is posted.
+# Muse Failed on the PR keeps it pending, even beside both approvals.
+# Fork PRs: this repo is private, so whether a fork's PR runs workflows, and
+# with what token, depends on the repository's Actions fork settings; with a
+# read-only token no status is posted.
 on:
   pull_request:
     branches: [main]
@@ -52,14 +55,21 @@ jobs:
           # failed API call then fails the job, instead of reading as an empty
           # head and exiting green on the "stale event" path.
           OUT=$(gh api "repos/$REPO/pulls/$PR" \
-            --jq '[.head.sha, ([.labels[].name] | index("QA Approved") != null), ([.labels[].name] | index("Muse Approved") != null)] | @tsv')
-          read -r HEAD QA MUSE <<<"$OUT"
+            --jq '[.head.sha, ([.labels[].name] | index("QA Approved") != null), ([.labels[].name] | index("Muse Approved") != null), ([.labels[].name] | index("Muse Failed") != null)] | @tsv')
+          read -r HEAD QA MUSE MUSE_FAILED <<<"$OUT"
           [ -n "$HEAD" ] || { echo "no head SHA in the API reply"; exit 1; }
           if [ "$HEAD" != "$EVENT_SHA" ]; then
             echo "Stale event: $EVENT_SHA is no longer the head ($HEAD); not changing QA Gate"
             exit 0
           fi
-          if [ "$QA" = true ] && [ "$MUSE" = true ]; then
+          # Muse Failed blocks, whatever else is on. pr-labels.yml's on-label
+          # removes the other Muse label when one is added, but that removal
+          # (with GITHUB_TOKEN) doesn't run this workflow again, so a run that
+          # sees both stays pending until the next label change: it fails
+          # closed. In practice the next change is the maintainer's QA Approved.
+          if [ "$MUSE_FAILED" = true ]; then
+            post pending "Muse Failed is on"
+          elif [ "$QA" = true ] && [ "$MUSE" = true ]; then
             post success "QA Approved and Muse Approved"
           elif [ "$QA" = true ]; then
             post pending "Waiting for Muse Approved"

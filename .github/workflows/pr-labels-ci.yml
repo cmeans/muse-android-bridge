@@ -34,6 +34,9 @@ jobs:
       github.event_name == 'workflow_run'
       && github.event.workflow_run.event == 'pull_request'
       && contains(fromJSON('["success","failure","timed_out"]'), github.event.workflow_run.conclusion)
+      && github.event.workflow_run.path == '.github/workflows/ci.yml'
+    # The path check: workflow_run matches by name, so a PR adding another
+    # workflow named "CI" would otherwise promote its own PR on that run.
     runs-on: ubuntu-latest
     concurrency:
       group: pr-labels-ci-${{ github.event.workflow_run.head_sha }}

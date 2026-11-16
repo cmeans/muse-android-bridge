@@ -3,16 +3,19 @@ name: PR Label Automation
 # Label transitions triggered by PR events (push, label, unlabel).
 # Promotion when CI finishes lives in pr-labels-ci.yml (workflow_run trigger).
 # Adapted from muse-field-kit (itself from mcp-clipboard and mcp-synology).
-# Here a push also removes Muse Approved and Muse Failed: Muse reviewed the
-# old head, and qa-gate.yml needs Muse Approved on the current one.
+# Here a push or a reopen also removes Muse Approved and Muse Failed: Muse
+# reviewed the old head, and qa-gate.yml needs Muse Approved on the current
+# one. Adding one Muse verdict removes the other (on-label), as mcp-phone-commands
+# does, without its event ordering: qa-gate.yml fails closed while both are on.
 #
-# Fork PRs: a pull_request run from a fork gets a read-only token, so none of
-# these jobs can label a fork's PR (and qa-gate.yml can't post its status).
-# The maintainer labels those by hand.
+# Fork PRs: this repo is private, so whether a fork's PR runs these jobs, and
+# with what token, depends on the repository's Actions fork settings. With a
+# read-only token none of them can label it, and the maintainer labels it by
+# hand (QA Gate then posts no status at all, which labels can't fix).
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, labeled, unlabeled]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   pull-requests: write
@@ -21,14 +24,20 @@ permissions:
 jobs:
   # A new push resets the PR to Awaiting CI and removes stale QA/workflow
   # labels. Dev Active stays (it coexists with Awaiting CI: CI runs, but
-  # won't promote until Dev Active is removed).
+  # won't promote until Dev Active is removed). A reopen too: commits pushed
+  # while a PR was closed may come with no synchronize event, and approvals
+  # from before the close mustn't carry over to them.
   on-push:
-    if: github.event.action == 'opened' || github.event.action == 'synchronize'
+    if: >-
+      github.event.action == 'opened'
+      || github.event.action == 'synchronize'
+      || github.event.action == 'reopened'
     runs-on: ubuntu-latest
     steps:
       - name: Reset labels on new push
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTION: ${{ github.event.action }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
@@ -57,8 +66,9 @@ jobs:
           fi
 
           if [ "$HAD_QA_ACTIVE" = true ]; then
+            if [ "$ACTION" = reopened ]; then WHAT="PR reopened"; else WHAT="New commits pushed"; fi
             gh pr comment "$PR" --repo "$REPO" \
-              --body "New commits pushed while QA was active. QA review invalidated — resetting to Awaiting CI."
+              --body "$WHAT while QA was active. QA review invalidated — resetting to Awaiting CI."
           fi
 
   # Dev Active removed: if CI already passed on the head commit, promote
@@ -134,7 +144,7 @@ jobs:
   on-label:
     if: >-
       github.event.action == 'labeled'
-      && contains(fromJSON('["Ready for QA","QA Active","Dev Active","Ready for QA Signoff","QA Failed","QA Approved"]'), github.event.label.name)
+      && contains(fromJSON('["Ready for QA","QA Active","Dev Active","Ready for QA Signoff","QA Failed","QA Approved","Muse Approved","Muse Failed"]'), github.event.label.name)
     runs-on: ubuntu-latest
     steps:
       - name: Clean up stale labels
@@ -165,6 +175,7 @@ jobs:
             "Dev Active")
               remove_if_present "QA Failed"
               remove_if_present "CI Failed"
+              remove_if_present "Muse Failed"
               remove_if_present "Awaiting CI"
               remove_if_present "Ready for QA"
               ;;
@@ -177,5 +188,13 @@ jobs:
               ;;
             "QA Approved")
               remove_if_present "Ready for QA Signoff"
+              ;;
+            # One Muse verdict replaces the other. qa-gate.yml fails closed
+            # while both are on (see its comment).
+            "Muse Approved")
+              remove_if_present "Muse Failed"
+              ;;
+            "Muse Failed")
+              remove_if_present "Muse Approved"
               ;;
           esac
