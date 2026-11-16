@@ -40,6 +40,8 @@ import com.intfar.mabridge.protocol.PROTOCOL_VERSION
 import com.intfar.mabridge.protocol.ProbeRound
 import com.intfar.mabridge.protocol.PendingConfirm
 import com.intfar.mabridge.protocol.RateLimiter
+import com.intfar.mabridge.protocol.RunLockCheck
+import com.intfar.mabridge.protocol.atRunLock
 import com.intfar.mabridge.protocol.StaleReceipts
 import com.intfar.mabridge.protocol.Receipts
 import com.intfar.mabridge.protocol.STOP_PREF_KEYS
@@ -533,7 +535,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 limiter.record(d.source.channel, d.command, now)
                 // A family member's RustDesk launch waits for the owner's tap (design §4).
                 if (needsConfirm(d.command, d.source)) askConfirm(d.command as Command.Launch, d.source, msg.id)
-                else synchronized(runLock) { run(d.command, d.source, msg.id) }
+                else synchronized(runLock) { runIfStillAllowed(d.command, d.source, msg.id) }
             } catch (e: Exception) {
                 // One failed action mustn't drop the subscription; it isn't retried (§5).
                 ack(Receipts.failed(d.command), msg.id)
@@ -658,7 +660,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 // shutdown() still runs queued tasks. A bridge stopped before the tap is resolved
                 // never launches: resolveConfirm reads `running` under the confirm lock, and the
                 // stored request stays for RESTARTED at the next start. One stopped after that,
-                // during the 5 s launch check, has launched already; its receipt is then logged as
+                // while the launch waits for runLock (another command's 5 s launch check can hold
+                // it), launches nothing, and its request is stored again for RESTARTED at the next
+                // start (launchConfirmed). One stopped
+                // during its own launch check has launched already; its receipt is then logged as
                 // not sent (ack).
                 if (!running) return@execute
                 // STOP withdraws the request itself; resolveConfirm also turns this OPEN into
@@ -673,19 +678,60 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
-    /** Today's launch path for the confirmed request, in today's order, with handle's catch. */
+    /**
+     * Today's launch path for the confirmed request, in today's order, with handle's catch. The
+     * request has already ended (resolveConfirm), so STOP and Stop bridge are checked again once
+     * runLock is held: the wait for it can last about 5 s per launch check ahead of it (#33 item 21).
+     */
     private fun launchConfirmed(p: PendingConfirm) {
         // A setup save restarts a running bridge (RESTARTED), so the member is normally still set up.
         val member = Config.familyMembers(this).firstOrNull { it.slug == p.member } ?: FamilyMember(p.member, "a family member")
         val source = Source(Channel.FAMILY, member)
-        synchronized(runLock) {
+        val check = synchronized(runLock) {
             try {
-                run(RUSTDESK, source, p.id)
+                runIfStillAllowed(RUSTDESK, source, p.id)
             } catch (e: Exception) {
                 ack(Receipts.failed(RUSTDESK), p.id)
                 log("failed (${source.logTag()}): ${RUSTDESK.text}: ${e.javaClass.simpleName}")
+                null
             }
         }
+        // The bridge stopped while this waited for runLock: by now its receipt queue is very
+        // likely shut down, so a receipt here would be lost. The request goes back to storage
+        // instead, after runLock is released (lock order), so the next start answers it as
+        // RESTARTED (`not-confirmed`), as for any request the bridge stopped on (PROTOCOL §6).
+        if (check == RunLockCheck.STOPPED) synchronized(confirmLock) {
+            if (readPending() == null) {
+                storePending(p)
+                log("kept (${source.logTag()}): ${RUSTDESK.text} (bridge stopped while waiting to run; answered at the next start)")
+            } else {
+                // Only one request is stored; this one can't be answered (not expected: a
+                // stopped bridge stores no new request).
+                log("not-answered (${source.logTag()}): ${RUSTDESK.text} (bridge stopped while waiting to run; another request is stored)")
+            }
+        }
+    }
+
+    /**
+     * Runs [command] unless STOP or Stop bridge came while it waited for [runLock] behind another
+     * command's launch check (atRunLock; #33 item 21), and returns what atRunLock decided. Under
+     * STOP it answers `disabled`. On a stopped bridge it runs nothing and sends nothing: the
+     * command was read and recorded as seen, so it's never answered or replayed (PROTOCOL §7),
+     * except a confirmed RustDesk launch, whose request launchConfirmed stores again for the next
+     * start. Callers hold [runLock].
+     */
+    private fun runIfStillAllowed(command: Command, source: Source, id: String): RunLockCheck {
+        val tag = source.logTag()
+        val check = atRunLock(running, stopState(), source.channel)
+        when (check) {
+            RunLockCheck.RUN -> run(command, source, id)
+            RunLockCheck.DISABLED -> {
+                ack(Receipts.disabled(command), id)
+                log("disabled ($tag): ${command.text} (STOP while waiting to run)")
+            }
+            RunLockCheck.STOPPED -> log("not-run ($tag): ${command.text} (bridge stopped while waiting to run)")
+        }
+        return check
     }
 
     /** A tap on a request that has ended: nothing runs; a short word so the owner isn't left wondering. */
