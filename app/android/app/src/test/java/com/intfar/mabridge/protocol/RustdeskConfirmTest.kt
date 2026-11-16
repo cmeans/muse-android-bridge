@@ -91,8 +91,22 @@ class RustdeskConfirmTest {
         )
     }
 
+    @Test fun stopPastTheDeadlineIsNotConfirmed() {
+        // A late answer is not-confirmed whatever the event (PROTOCOL §5 c, d): STOP before the
+        // deadline withdraws the request as disabled, STOP after it (the timer slept) times out.
+        assertEquals(ConfirmEvent.STOPPED, effectiveEvent(pending, ConfirmEvent.STOPPED, pending.deadlineMs - 1))
+        for (now in listOf(pending.deadlineMs, pending.deadlineMs + 5_000)) {
+            assertEquals(ConfirmEvent.TIMEOUT, effectiveEvent(pending, ConfirmEvent.STOPPED, now))
+        }
+        assertEquals(
+            ConfirmOutcome.Answer("err launch rustdesk not-confirmed", "not-confirmed (family/m1): launch rustdesk (timeout)"),
+            confirmOutcome(pending, effectiveEvent(pending, ConfirmEvent.STOPPED, pending.deadlineMs), pending.id),
+        )
+    }
+
     @Test fun deadlineDoesNotChangeOtherEvents() {
-        for (e in listOf(ConfirmEvent.TIMEOUT, ConfirmEvent.STOPPED, ConfirmEvent.RESTARTED)) {
+        // RESTARTED already answers not-confirmed, with its own log reason.
+        for (e in listOf(ConfirmEvent.TIMEOUT, ConfirmEvent.RESTARTED)) {
             for (now in listOf(pending.deadlineMs - 1, pending.deadlineMs, pending.deadlineMs + 1)) {
                 assertEquals(e, effectiveEvent(pending, e, now))
             }

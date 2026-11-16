@@ -1,6 +1,7 @@
 package com.intfar.mabridge.protocol
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class StatusNotificationTest {
@@ -42,19 +43,22 @@ class StatusNotificationTest {
 
     @Test fun someMembersRefused() {
         val s = statusNotificationFor(none, host, members = 2, refusedNames = listOf("Alex"))
-        assertEquals("Listening for your Muse and family on ntfy.example.com. Can't reach: Alex", s.text)
+        assertEquals("Listening for your Muse and family on ntfy.example.com. Can't reach: Alex. Tap to open.", s.text)
+        assertEquals("Listening for your Muse and family on ntfy.example.com. Can't reach some family members. Tap to open.", s.publicText)
         assertEquals(listOf(StopButton.FAMILY, StopButton.ALL), s.buttons)
     }
 
     @Test fun allMembersRefused() {
         val s = statusNotificationFor(none, host, members = 2, refusedNames = listOf("Alex", "Helper B"))
-        assertEquals("Listening for your Muse on ntfy.example.com. Can't reach: Alex, Helper B", s.text)
+        assertEquals("Listening for your Muse on ntfy.example.com. Can't reach: Alex, Helper B. Tap to open.", s.text)
+        assertEquals("Listening for your Muse on ntfy.example.com. Can't reach any family member. Tap to open.", s.publicText)
         assertEquals(listOf(StopButton.FAMILY, StopButton.ALL), s.buttons)
     }
 
     @Test fun oneMemberRefusedIsAllRefused() {
         val s = statusNotificationFor(none, host, members = 1, refusedNames = listOf("Alex"))
-        assertEquals("Listening for your Muse on ntfy.example.com. Can't reach: Alex", s.text)
+        assertEquals("Listening for your Muse on ntfy.example.com. Can't reach: Alex. Tap to open.", s.text)
+        assertEquals("Listening for your Muse on ntfy.example.com. Can't reach any family member. Tap to open.", s.publicText)
     }
 
     @Test fun familyStoppedWinsOverRefused() {
@@ -142,5 +146,18 @@ class StatusNotificationTest {
         assertEquals(null, stopTapFor(null, none))
         assertEquals(null, stopTapFor("com.intfar.mabridge.STOP_RING", none))
         assertEquals(null, stopTapFor("com.intfar.mabridge.REPOST_STATUS", none))
+    }
+    @Test fun publicTextNamesNobody() {
+        // The status notification shows on the lock screen even when the phone hides sensitive
+        // content: its public version mustn't carry a member's name.
+        for (stop in listOf(none, family, all)) {
+            for (refused in listOf(emptyList(), listOf("Alex"), listOf("Alex", "Helper B"))) {
+                for (members in listOf(0, 1, 2, 3)) {
+                    val s = statusNotificationFor(stop, host, members, refused.take(members))
+                    assertFalse(s.publicText, s.publicText.contains("Alex") || s.publicText.contains("Helper B"))
+                    if (refused.take(members).isEmpty() || stop.all || stop.family) assertEquals(s.text, s.publicText)
+                }
+            }
+        }
     }
 }

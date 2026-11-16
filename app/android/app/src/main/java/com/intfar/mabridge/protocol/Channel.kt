@@ -72,8 +72,25 @@ fun subscribeTopics(device: String, members: List<FamilyMember>): List<String> =
  * The topics to subscribe to after ntfy refused the whole list (design §2): the [owner] topic,
  * then each member topic whose one-shot probe in [probed] answered 200, in [probed]'s order
  * (setup order). Any other answer counts as refused for this round: a 403, another status, or
- * a network error (passed as any non-200 code). The owner's own entry, if present, is the
- * caller's to check: a refused owner topic is a plain `subscribe: HTTP 403`.
+ * a network error (passed as any non-200 code); [refusedForLog] says which in the log. The
+ * owner's own entry, if present, is the caller's to check: a refused owner topic is a plain
+ * `subscribe: HTTP 403`, another status `subscribe: HTTP <code>`, a network error
+ * `subscribe error`.
  */
 fun topicsAfterProbe(owner: String, probed: Map<String, Int>): List<String> =
     listOf(owner) + probed.filter { (topic, code) -> topic != owner && code == 200 }.keys
+
+/**
+ * The refused members as the log names them (design §2): `family/<slug>` for a plain 403, and
+ * the answer otherwise, so a flaky probe doesn't read as a missing grant: `(no answer)` for a
+ * network error (-1) or a member not probed (null, the bridge stopped mid-round), `(HTTP <code>)`
+ * for any other status. Each entry is a slug and its probe's code. Slugs only, never names.
+ */
+fun refusedForLog(refused: List<Pair<String, Int?>>): String =
+    refused.joinToString(", ") { (slug, code) ->
+        when (code) {
+            403 -> "family/$slug"
+            null, -1 -> "family/$slug (no answer)"
+            else -> "family/$slug (HTTP $code)"
+        }
+    }

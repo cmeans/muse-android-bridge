@@ -109,4 +109,85 @@ class FamilyMembersTest {
         val stored = (1..9).joinToString("\n") { "m$it\tName" }
         assertEquals((1..8).map { "m$it" }, decodeMembers(stored, "p").map { it.slug })
     }
+    @Test fun namesThatReadAsAnotherSenderAreRefused() {
+        // "asked by your Muse" must mean the owner's channel, and the app's own fallbacks
+        // ("family", "a family member") mustn't be a member's name either.
+        for (n in listOf("your Muse", "Your Muse", "YOUR MUSE", "family", "Family", "a family member", "A Family Member")) {
+            assertFalse(n, isValidMemberName(n))
+        }
+        // Only the whole name is refused.
+        for (n in listOf("Muse", "Family Friend", "Your Musette")) assertTrue(n, isValidMemberName(n))
+    }
+
+    @Test fun appWordingNameProblemSaysWhy() {
+        assertEquals(
+            listOf("\"Your Muse\" can't be a member's name: the phone uses it for your Muse or the family as a whole."),
+            memberProblems(listOf(FamilyMember("m1", "Your Muse")), device),
+        )
+    }
+
+    @Test fun appWordingIsLocaleIndependent() {
+        // Turkish lowercase of "I" is "ı": a default-locale lowercase would let "FAMILY" through.
+        val saved = java.util.Locale.getDefault()
+        java.util.Locale.setDefault(java.util.Locale.forLanguageTag("tr"))
+        try {
+            assertFalse(isValidMemberName("FAMILY"))
+            assertFalse(isValidMemberName("a family member"))
+        } finally {
+            java.util.Locale.setDefault(saved)
+        }
+    }
+
+    @Test fun invisibleFillersAreRefused() {
+        // Hangul fillers are letters (Lo) with no glyph: a name of one is blank on screen.
+        for (cp in listOf(0x3164, 0x115F, 0x1160, 0xFFA0)) {
+            val filler = String(Character.toChars(cp))
+            assertFalse("U+%04X alone".format(cp), isValidMemberName(filler))
+            assertFalse("Alex + U+%04X".format(cp), isValidMemberName("Alex$filler"))
+            assertFalse("U+%04X + Alex".format(cp), isValidMemberName("${filler}Alex"))
+        }
+        // Default-ignorable marks after a letter render as nothing too.
+        for (cp in listOf(0x034F, 0xFE0F, 0x180B, 0xE0100)) {
+            assertFalse("Alex + U+%04X".format(cp), isValidMemberName("Alex" + String(Character.toChars(cp))))
+        }
+    }
+
+    @Test fun invisibleFillerCannotDodgeTheDuplicateCheck() {
+        val problems = memberProblems(listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "Alex\u3164")), device)
+        assertEquals(1, problems.size)
+        assertTrue(problems[0], problems[0].contains("not a usable name"))
+    }
+
+    @Test fun joinersStillAllowedBetweenLetters() {
+        // The joiners are default-ignorable too, but keep their own rule.
+        assertTrue(isValidMemberName("مری\u200Cم"))
+        assertTrue(isValidMemberName("आचार्\u200Dय"))
+    }
+
+    @Test fun memberIdProblemsSayWhy() {
+        fun problem(slug: String, dev: String = device) = memberProblems(listOf(FamilyMember(slug, "Alex")), dev).single()
+        assertEquals("A member id is missing.", problem(""))
+        assertEquals(
+            "\"M1\" is not a usable member id: use lowercase letters and digits, in words joined by hyphens.",
+            problem("M1"),
+        )
+        assertEquals(
+            "\"m--1\" is not a usable member id: use lowercase letters and digits, in words joined by hyphens.",
+            problem("m--1"),
+        )
+        for (s in listOf("family", "family-x", "x-family", "owner", "b-owner", "ack", "b-ack")) {
+            assertEquals(
+                s,
+                "\"$s\" can't be a member id: it can't contain the word family, or end in owner or ack.",
+                problem(s),
+            )
+        }
+        // 64 - "mab-<40 d's>-family-".length = 12.
+        val longDevice = "d".repeat(40)
+        assertEquals(
+            "\"${"m".repeat(13)}\" is too long: member ids on this phone are at most 12 characters.",
+            problem("m".repeat(13), longDevice),
+        )
+        assertTrue(memberProblems(listOf(FamilyMember("m".repeat(12), "Alex")), longDevice).isEmpty())
+    }
 }

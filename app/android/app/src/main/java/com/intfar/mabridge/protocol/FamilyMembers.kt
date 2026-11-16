@@ -31,28 +31,46 @@ fun memberTopic(device: String, member: String): String = "mab-$device-family-$m
  * `owner` or `ack` (it would collide with another device's topic), and a whole topic of at most
  * [MAX_TOPIC_LENGTH] characters.
  */
-fun isValidMemberSlug(member: String, device: String): Boolean {
-    if (!SLUG_WORDS.matches(member)) return false
-    if (member in RESERVED_SLUGS) return false
+fun isValidMemberSlug(member: String, device: String): Boolean = memberSlugProblem(member, device) == null
+
+/** The longest member slug for [device]: what's left of [MAX_TOPIC_LENGTH] after `mab-<device>-family-`. */
+fun maxMemberSlugLength(device: String): Int = MAX_TOPIC_LENGTH - memberTopic(device, "").length
+
+/** Why [member] isn't a usable slug for [device], in words for the owner, or null when it is. */
+private fun memberSlugProblem(member: String, device: String): String? {
+    if (member.isEmpty()) return "A member id is missing."
+    if (!SLUG_WORDS.matches(member)) {
+        return "\"$member\" is not a usable member id: use lowercase letters and digits, in words joined by hyphens."
+    }
     val words = member.split('-')
-    if ("family" in words) return false
-    if (words.last() == "owner" || words.last() == "ack") return false
-    return memberTopic(device, member).length <= MAX_TOPIC_LENGTH
+    // The reserved slugs themselves fall here too: `family` is a word, `owner` and `ack` a last word.
+    if (member in RESERVED_SLUGS || "family" in words || words.last() == "owner" || words.last() == "ack") {
+        return "\"$member\" can't be a member id: it can't contain the word family, or end in owner or ack."
+    }
+    val max = maxMemberSlugLength(device)
+    if (member.length > max) return "\"$member\" is too long: member ids on this phone are at most $max characters."
+    return null
 }
 
 /**
  * A display name: letters of any script, combining marks, spaces, hyphens and apostrophes, with
  * at least one letter and at most [MAX_MEMBER_NAME_LENGTH] code points after NFC normalization.
- * A zero-width joiner or non-joiner is allowed only between a letter or mark and a letter. It
- * takes the raw name and normalizes it itself.
+ * A zero-width joiner or non-joiner is allowed only between a letter or mark and a letter; every
+ * other default-ignorable code point is refused, letters and marks included (the Hangul fillers
+ * such as U+3164 are letters with no glyph), so a name can't be blank on screen or dodge the
+ * duplicate check with an invisible character. The app's own words for a sender
+ * ([isAppWording]) are refused too. It takes the raw name and normalizes it itself.
  */
 fun isValidMemberName(name: String): Boolean {
-    val cps = normalizeName(name).codePoints().toArray()
+    val normalized = normalizeName(name)
+    if (isAppWording(normalized)) return false
+    val cps = normalized.codePoints().toArray()
     if (cps.isEmpty() || cps.size > MAX_MEMBER_NAME_LENGTH) return false
     if (cps.first() == ' '.code || cps.last() == ' '.code) return false
     var hasLetter = false
     var prevLetterOrMark = false
     for ((i, cp) in cps.withIndex()) {
+        if (cp != ZWNJ && cp != ZWJ && isDefaultIgnorable(cp)) return false
         val isLetter = Character.isLetter(cp)
         val type = Character.getType(cp)
         val isMark = type == Character.NON_SPACING_MARK.toInt() ||
@@ -73,8 +91,32 @@ fun isValidMemberName(name: String): Boolean {
 }
 
 /**
- * Why the list can't be saved, in words for the owner: empty when it can. Each bad member or
- * repeat yields one problem; names are compared ignoring case after NFC normalization.
+ * The words the app itself uses for a sender: "your Muse" (the owner channel), and "family" and
+ * "a family member" (its fallbacks). A member with one of them as a name would read as that
+ * sender ("Opening Meet: asked by your Muse"). Compared on the NFC-normalized [name], ignoring
+ * case code point by code point, never with the default locale's lowercase.
+ */
+private fun isAppWording(name: String): Boolean = APP_WORDING.any { it.equals(name, ignoreCase = true) }
+
+private val APP_WORDING = listOf("your Muse", "family", "a family member")
+
+/**
+ * Unicode's Default_Ignorable_Code_Point property (DerivedCoreProperties.txt): code points that
+ * render as nothing. Java has no accessor for it, so the ranges are listed.
+ */
+internal fun isDefaultIgnorable(cp: Int): Boolean = DEFAULT_IGNORABLE.any { cp in it }
+
+private val DEFAULT_IGNORABLE = listOf(
+    0x00AD..0x00AD, 0x034F..0x034F, 0x061C..0x061C, 0x115F..0x1160, 0x17B4..0x17B5,
+    0x180B..0x180F, 0x200B..0x200F, 0x202A..0x202E, 0x2060..0x206F, 0x3164..0x3164,
+    0xFE00..0xFE0F, 0xFEFF..0xFEFF, 0xFFA0..0xFFA0, 0xFFF0..0xFFF8, 0x1BCA0..0x1BCA3,
+    0x1D173..0x1D17A, 0xE0000..0xE0FFF,
+)
+
+/**
+ * Why the list can't be saved, in words for the owner: empty when it can. Each bad member id, bad
+ * name or repeat yields one problem that says what to fix; names are compared ignoring case after
+ * NFC normalization.
  */
 fun memberProblems(members: List<FamilyMember>, device: String): List<String> {
     val problems = mutableListOf<String>()
@@ -82,12 +124,15 @@ fun memberProblems(members: List<FamilyMember>, device: String): List<String> {
     val slugs = mutableSetOf<String>()
     val names = mutableListOf<String>()
     for (m in members) {
-        if (!isValidMemberSlug(m.slug, device)) {
-            problems += "\"${m.slug}\" is not a usable member id."
+        val slugProblem = memberSlugProblem(m.slug, device)
+        if (slugProblem != null) {
+            problems += slugProblem
         } else if (!slugs.add(m.slug)) {
             problems += "The member id \"${m.slug}\" is used twice."
         }
-        if (!isValidMemberName(m.name)) {
+        if (isAppWording(normalizeName(m.name))) {
+            problems += "\"${m.name}\" can't be a member's name: the phone uses it for your Muse or the family as a whole."
+        } else if (!isValidMemberName(m.name)) {
             problems += "\"${m.name}\" is not a usable name (letters, spaces, hyphens and apostrophes; up to " +
                 "$MAX_MEMBER_NAME_LENGTH characters)."
         } else {

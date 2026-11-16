@@ -53,6 +53,7 @@ import com.intfar.mabridge.protocol.isExpired
 import com.intfar.mabridge.protocol.memberTopic
 import com.intfar.mabridge.protocol.needsConfirm
 import com.intfar.mabridge.protocol.onConfirmRequest
+import com.intfar.mabridge.protocol.refusedForLog
 import com.intfar.mabridge.protocol.rustdeskRequestAnnouncement
 import com.intfar.mabridge.protocol.subscribeTopics
 import com.intfar.mabridge.protocol.topicsAfterProbe
@@ -224,10 +225,11 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         running = false
         flushBacklog()
         // A waiting request stays stored (answered as RESTARTED at the next start); only its
-        // timer and prompt go. The refused list is this run's.
-        main.removeCallbacksAndMessages(CONFIRM_TOKEN)
+        // timer and prompt go. Under confirmLock, after running is false: an askConfirm still
+        // posting either finishes first (and this removes what it posted) or sees the stop and
+        // removes them itself. Holds no runLock (lock order). The refused list is this run's.
+        synchronized(confirmLock) { cancelConfirmPrompt() }
         main.removeCallbacks(probeTick)
-        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(CONFIRM_NOTIFICATION)
         Config.prefs(this).edit().remove(Config.PREF_REFUSED_MEMBERS).putBoolean("service_running", false).apply()
         conn?.disconnect()
         stopRinging("bridge stopped")
@@ -265,21 +267,27 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                     // say which (design §2): ask about each alone, the owner topic included.
                     c.disconnect()
                     val probed = LinkedHashMap<String, Int>()
+                    // The owner topic comes first: a network error on its probe is thrown to the
+                    // catch below, so it logs today's `subscribe error` and backs off.
+                    probed[owner] = probe(owner, throwErrors = true)
                     for (t in topics) {
                         if (!running) break
-                        probed[t] = probe(t)
+                        if (t != owner) probed[t] = probe(t)
                     }
                     if (!running) break
-                    // A refused owner topic keeps today's `subscribe: HTTP 403` and backoff, so
-                    // the log names the real cause.
                     if (probed[owner] == 200) {
                         val readable = topicsAfterProbe(owner, probed)
                         refused = members.map { it.slug }.filter { memberTopic(slug, it) !in readable }
                         if (refused.isNotEmpty()) {
-                            log("subscribe: HTTP 403; family topics refused: ${refused.joinToString(", ") { "family/$it" }}")
+                            val answers = refused.map { it to probed[memberTopic(slug, it)] }
+                            log("subscribe: HTTP 403; family topics refused: ${refusedForLog(answers)}")
                             c = openStream(readable)
                             code = c.responseCode
                         }
+                    } else {
+                        // A refused owner topic keeps today's `subscribe: HTTP 403` and backoff;
+                        // any other answer is logged as itself, so the log names the real cause.
+                        code = probed.getValue(owner)
                     }
                 }
                 if (code != 200) {
@@ -334,10 +342,11 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     /**
      * Whether the phone's credential can read [topic] alone: a one-shot poll, answered 200
      * (readable) or 403 (refused) at once. -1 for a network error, which, like any status but
-     * 200, counts as refused for this round. Short timeouts: it holds up a reconnect, or the
+     * 200, counts as refused for this round (the log names which, [refusedForLog]); with
+     * [throwErrors] the error is thrown instead. Short timeouts: it holds up a reconnect, or the
      * receipt queue when the 15-minute timer runs it.
      */
-    private fun probe(topic: String): Int {
+    private fun probe(topic: String, throwErrors: Boolean = false): Int {
         var c: HttpURLConnection? = null
         return try {
             c = URL("${Config.server(this)}/$topic/json?poll=1&since=none").openConnection() as HttpURLConnection
@@ -345,7 +354,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             c.connectTimeout = PROBE_TIMEOUT_MS
             c.readTimeout = PROBE_TIMEOUT_MS
             c.responseCode
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (throwErrors) throw e
             -1
         } finally {
             c?.disconnect()
@@ -494,12 +504,17 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
                 announce(rustdeskRequestAnnouncement(member.name))
                 log("confirm-asked ($tag): ${command.text}")
                 postConfirmPrompt(p, member.name)
-                main.postDelayed({ resolveConfirm(ConfirmEvent.TIMEOUT, p.id) }, CONFIRM_TOKEN, CONFIRM_TIMEOUT_MS)
+                // A stopped bridge's timer does nothing (resolveConfirm): the request waits for
+                // RESTARTED at the next start.
+                main.postDelayed({ if (running) resolveConfirm(ConfirmEvent.TIMEOUT, p.id) }, CONFIRM_TOKEN, CONFIRM_TIMEOUT_MS)
             } catch (e: Exception) {
                 // handle's catch sends `failed`: the request mustn't also time out into a second receipt.
                 endPending()
                 throw e
             }
+            // The bridge stopped while this posted: onDestroy may have cleared the prompt and
+            // timer before they existed. The request stays stored for RESTARTED; they go.
+            if (!running) cancelConfirmPrompt()
         }
     }
 
@@ -517,10 +532,12 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
      * the Handler timer stops in deep sleep and an unlock can run past the deadline. Returns
      * the event the request was resolved as, or null when nothing was resolved: no request, or
      * another one than [eventId]. A launch (OPEN only) takes [runLock] after [confirmLock] is
-     * released, never inside it.
+     * released, never inside it. A TIMEOUT on a stopped bridge does nothing: its receipt could
+     * no longer be sent, and the stored request is answered as RESTARTED at the next start.
      */
     private fun resolveConfirm(event: ConfirmEvent, eventId: String?): ConfirmEvent? {
         val (pending, resolvedAs, outcome) = synchronized(confirmLock) {
+            if (event == ConfirmEvent.TIMEOUT && !running) return null
             val p = readPending() ?: return null
             val e = effectiveEvent(p, event, SystemClock.elapsedRealtime())
             val o = confirmOutcome(p, e, eventId ?: p.id) ?: return null
@@ -598,6 +615,11 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         Config.prefs(this).edit()
             .remove(PREF_CONFIRM_ID).remove(PREF_CONFIRM_MEMBER).remove(PREF_CONFIRM_DEADLINE)
             .commit()
+        cancelConfirmPrompt()
+    }
+
+    /** Removes the confirm timer and prompt, keeping any stored request. Called holding [confirmLock]. */
+    private fun cancelConfirmPrompt() {
         main.removeCallbacksAndMessages(CONFIRM_TOKEN)
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(CONFIRM_NOTIFICATION)
     }
@@ -1024,9 +1046,20 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             .setSmallIcon(R.drawable.ic_bridge)
             .setContentIntent(ownerScreen())
             .setDeleteIntent(serviceAction(ACTION_REPOST_STATUS, 4))
-            // Nothing private in it, and the STOP buttons must show on the lock screen even
-            // when the phone hides sensitive notification content there.
+            // The STOP buttons must show on the lock screen even when the phone hides sensitive
+            // notification content there, so the notification is public: a redacted one shows
+            // only its public version, without buttons. The refused members' names are its only
+            // private part. Android shows the public version, which names nobody, when the owner
+            // sets this channel to hide sensitive content; with the phone-wide setting alone a
+            // public notification still shows in full, names included.
             .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setPublicVersion(
+                Notification.Builder(this, CH_STATUS)
+                    .setContentTitle("Muse Bridge")
+                    .setContentText(status.publicText)
+                    .setSmallIcon(R.drawable.ic_bridge)
+                    .build()
+            )
             .setOngoing(true)
             // Re-posted on every STOP change; only the first post may alert.
             .setOnlyAlertOnce(true)

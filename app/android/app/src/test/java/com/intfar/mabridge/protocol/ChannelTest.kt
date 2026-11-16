@@ -121,4 +121,15 @@ class ChannelTest {
         assertEquals(listOf(owner), topicsAfterProbe(owner, linkedMapOf("mab-p-family-m1" to -1, "mab-p-family-m2" to 500)))
         assertEquals(listOf(owner), topicsAfterProbe(owner, emptyMap<String, Int>()))
     }
+    @Test fun refusedForLogSaysWhatHappened() {
+        // A 403 is the plain refusal; anything else names its answer, so a flaky probe doesn't
+        // read as a missing grant. Slugs only, never names.
+        assertEquals("family/m1", refusedForLog(listOf("m1" to 403)))
+        assertEquals(
+            "family/m1, family/m2 (no answer), family/m3 (HTTP 500)",
+            refusedForLog(listOf("m1" to 403, "m2" to -1, "m3" to 500)),
+        )
+        // A member the probe never reached (the bridge stopped mid-round) has no answer either.
+        assertEquals("family/m4 (no answer)", refusedForLog(listOf("m4" to null)))
+    }
 }

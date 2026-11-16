@@ -40,8 +40,11 @@ fun stopTapFor(action: String?, before: StopState): StopTap? {
     return StopTap(button, stopsRinging = button == StopButton.ALL, logLine = logLine)
 }
 
-/** What the status notification says and which STOP buttons it offers. */
-data class StatusNotification(val text: String, val buttons: List<StopButton>)
+/**
+ * What the status notification says and which STOP buttons it offers. [publicText] is the
+ * version a lock screen that hides sensitive content shows: it names no member.
+ */
+data class StatusNotification(val text: String, val buttons: List<StopButton>, val publicText: String = text)
 
 /**
  * The status notification for a STOP state (PROTOCOL §7): it tells the truth about which
@@ -49,7 +52,8 @@ data class StatusNotification(val text: String, val buttons: List<StopButton>)
  * channel back on is done in the app, never from the notification. [members] is how many
  * family members are set up: with none, the phone reads no family topic, so the text names
  * only "your Muse" and there's no Stop family button. [refusedNames] are the display names of
- * the members whose topics the server refused (design §2); the STOP texts win over them.
+ * the members whose topics the server refused (design §2); the STOP texts win over them. The
+ * names are only in [StatusNotification.text]; its public text says "some" or "any" instead.
  */
 fun statusNotificationFor(stop: StopState, host: String, members: Int, refusedNames: List<String>): StatusNotification {
     val buttons = if (members == 0) listOf(StopButton.ALL) else listOf(StopButton.FAMILY, StopButton.ALL)
@@ -61,7 +65,15 @@ fun statusNotificationFor(stop: StopState, host: String, members: Int, refusedNa
         members == 0 -> StatusNotification("Listening for your Muse on $host. Tap to open.", buttons)
         refusedNames.isEmpty() -> StatusNotification("Listening for your Muse and family on $host. Tap to open.", buttons)
         // Every member refused: only the owner's own Muse can reach the phone.
-        refusedNames.size >= members -> StatusNotification("Listening for your Muse on $host. Can't reach: $refused", buttons)
-        else -> StatusNotification("Listening for your Muse and family on $host. Can't reach: $refused", buttons)
+        refusedNames.size >= members -> StatusNotification(
+            "Listening for your Muse on $host. Can't reach: $refused. Tap to open.",
+            buttons,
+            publicText = "Listening for your Muse on $host. Can't reach any family member. Tap to open.",
+        )
+        else -> StatusNotification(
+            "Listening for your Muse and family on $host. Can't reach: $refused. Tap to open.",
+            buttons,
+            publicText = "Listening for your Muse and family on $host. Can't reach some family members. Tap to open.",
+        )
     }
 }
