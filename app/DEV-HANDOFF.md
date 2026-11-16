@@ -84,8 +84,8 @@ then set the bridge up again (server, password, permissions, battery
 exemption). The phones move over with the release-key build.
 
 Known gaps before any family deployment. On 2026-11-12, PR #4 carried out
-Tasks 1-7 of the executor plan (now `docs/plans/2026-11-12-app-executor-v1.md`
-in the private muse-android-bridge-infra repo): Keystore credential storage,
+Tasks 1-7 of the executor plan (now kept with the other plans, outside this
+repo): Keystore credential storage,
 the verified registry, and unit tests for check order, TTL, dedup and
 malformed input. What follows is still open:
 

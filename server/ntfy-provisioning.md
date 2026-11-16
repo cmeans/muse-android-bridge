@@ -6,9 +6,9 @@
 > was done; "Family members (protocol 0.5)" says what to do now.
 
 > A record of the reference deployment's provisioning, written as a worked
-> example. Device names, users, hosts and credential variable names are
-> generic examples (the live server uses its own); file paths are the
-> reference deployment's. Substitute your own throughout.
+> example. Device names, users, hosts, file locations and credential
+> variable names are generic examples (the live server uses its own).
+> Substitute your own throughout.
 
 Server: the server operator's existing ntfy, in a container on their home server.
 Provisioned 2026-11-11 with the maintainer's go. No service restart was
@@ -19,24 +19,24 @@ needed or performed — user/ACL changes are live database operations.
 | Principal | mab-pilot-phone-owner | mab-pilot-phone-family | mab-pilot-phone-ack |
 |---|---|---|---|
 | `pilot-phone-phone` (user, on-phone credential; `<device>-phone` per PROTOCOL §3) | read-only | read-only | write-only |
-| `muse` (the server operator's Muse, existing token) | write-only | — | read-only |
+| `owner-pub` (the owner channel's publisher: the owner's agent) | write-only | — | read-only |
 | `admin` (admin) | full (admin role) | full | full |
 
-Credential values live only in the ntfy container's `/root/ntfy-creds.txt` (0600) as
-`PILOT_PHONE_USER` / `PILOT_PHONE_PASSWORD`. Muse's token is unchanged at
-`~/.config/ntfy/token` (0600) — the ACL extension applies to the existing
-token because grants attach to the user.
+Credential values live only in a root-only file on the server (0600) as
+`PILOT_PHONE_USER` / `PILOT_PHONE_PASSWORD`. The publisher authenticates with
+its own token, kept in a 0600 file on its host; grants attach to the user,
+so a token picks up new grants without being reissued.
 
 ## Verification (2026-11-11, all as expected)
 
-- muse token publishes `launch meet` to owner topic → stored (id `8z0ElmpAFVzP`)
-- muse token reads owner topic → 403 (write-only holds)
+- publisher token publishes `launch meet` to owner topic → stored
+- publisher token reads owner topic → 403 (write-only holds)
 - anonymous publish → 403
 - phone user reads owner topic → receives the message
 - phone user publishes to owner topic → 403
 - phone user publishes receipt to ack → 200; reads ack → 403
 - phone user reads family topic → 200; reads the server operator's alert topic → 403 (no grant)
-- muse token reads ack topic → receives `ok launch meet`
+- publisher token reads ack topic → receives `ok launch meet`
 
 ## Family members (protocol 0.5)
 
