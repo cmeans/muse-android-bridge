@@ -110,6 +110,10 @@ private fun plainEvent(text: String): String? = when {
     text == "STOP all switched on from the notification" -> "You turned on Stop everything (notification)"
     text == "STOP family switched on from the notification" -> "You turned on Stop family (notification)"
     text.startsWith("ring ended: ") -> "Ringing ended"
+    text == LOG_STOP_TAPPED -> "You stopped the bridge"
+    text == LOG_NOT_STARTED_REBOOT -> "Didn't start after a reboot: the bridge is stopped"
+    text == LOG_NOT_STARTED_UPDATE -> "Didn't start after an update: the bridge is stopped"
+    text == LOG_KEPT_OFF_AT_UPDATE -> "Update: the bridge stays off until you tap Start bridge"
     else -> null
 }
 
