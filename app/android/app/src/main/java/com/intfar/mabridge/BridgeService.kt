@@ -21,7 +21,6 @@ import android.app.usage.UsageStatsManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.speech.tts.TextToSpeech
-import android.util.Base64
 import android.util.Log
 import android.widget.Toast
 import com.intfar.mabridge.protocol.Backoff
@@ -64,7 +63,6 @@ import com.intfar.mabridge.protocol.statusNotificationFor
 import com.intfar.mabridge.protocol.stopTapFor
 import com.intfar.mabridge.protocol.parseNtfyLine
 import com.intfar.mabridge.protocol.parseNtfyOpenTime
-import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -104,9 +102,10 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
     private val main = Handler(Looper.getMainLooper())
     /**
      * Held from reading the pending confirm request to clearing it, by every path that answers
-     * it, so two callers can't both answer it. Never taken while holding [runLock].
+     * it, so two callers can't both answer it. Never taken while holding [runLock]. The setup
+     * screen holds it too ([WaitingConfirm.lock]), when a save answers the request.
      */
-    private val confirmLock = Any()
+    private val confirmLock = WaitingConfirm.lock
     /** Held by every [run] call, so two launches can't overlap (the launch check reads the front app). */
     private val runLock = Any()
     /** Set when the bridge ends its own stream to reconnect with a newly readable member topic. */
@@ -212,7 +211,8 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             Config.prefs(this).edit().putBoolean("service_running", true).apply()
             log("service started")
             // A request left waiting by a restart, a reboot, a setup save or a Stop bridge gets
-            // its one receipt now (design §4), before subscribing.
+            // its one receipt now (design §4), before subscribing. A save that changed the server
+            // or device name has answered it already, on the old ones (SetupActivity.apply).
             resolveConfirm(ConfirmEvent.RESTARTED, null)
             thread(name = "mab-subscribe") { subscribeLoop() }
         }
@@ -400,12 +400,7 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         conn?.disconnect()
     }
 
-    private fun basicAuth(): String {
-        val pw = CredentialStore(this).load() ?: CharArray(0)
-        val raw = "${Config.username(this)}:${String(pw)}"
-        pw.fill('\u0000')
-        return "Basic " + Base64.encodeToString(raw.toByteArray(), Base64.NO_WRAP)
-    }
+    private fun basicAuth(): String = basicAuth(this)
 
     // ---- protocol -----------------------------------------------------------
 
@@ -592,29 +587,13 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         main.post { Toast.makeText(this, "That request has ended", Toast.LENGTH_SHORT).show() }
     }
 
-    private fun readPending(): PendingConfirm? {
-        val prefs = Config.prefs(this)
-        val id = prefs.getString(PREF_CONFIRM_ID, null) ?: return null
-        return PendingConfirm(id, prefs.getString(PREF_CONFIRM_MEMBER, null) ?: "", prefs.getLong(PREF_CONFIRM_DEADLINE, 0L))
-    }
+    private fun readPending(): PendingConfirm? = WaitingConfirm.read(this)
 
-    // commit, not apply: a request stored but lost, or cleared but kept, by a crash would
-    // break exactly one receipt per message.
-    @android.annotation.SuppressLint("ApplySharedPref") // on purpose, see above
-    private fun storePending(p: PendingConfirm) {
-        Config.prefs(this).edit()
-            .putString(PREF_CONFIRM_ID, p.id)
-            .putString(PREF_CONFIRM_MEMBER, p.member)
-            .putLong(PREF_CONFIRM_DEADLINE, p.deadlineMs)
-            .commit()
-    }
+    private fun storePending(p: PendingConfirm) = WaitingConfirm.store(this, p)
 
     /** Clears the stored request, its timer and its prompt. Called holding [confirmLock]. */
-    @android.annotation.SuppressLint("ApplySharedPref") // on purpose, like storePending
     private fun endPending() {
-        Config.prefs(this).edit()
-            .remove(PREF_CONFIRM_ID).remove(PREF_CONFIRM_MEMBER).remove(PREF_CONFIRM_DEADLINE)
-            .commit()
+        WaitingConfirm.clear(this)
         cancelConfirmPrompt()
     }
 
@@ -975,26 +954,17 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
             log("receipt not sent, bridge stopping: $text")
             return
         }
+        // Where it goes is read now, not when the queue reaches it: a setup save in between
+        // mustn't send it to the new server or ack topic (QA r1).
+        val dest = AckDestination.current(this)
         try {
             acks.execute {
-            var c: HttpURLConnection? = null
-            try {
-                c = URL("${Config.server(this)}/").openConnection() as HttpURLConnection
-                c.requestMethod = "POST"
-                c.setRequestProperty("Authorization", basicAuth())
-                c.setRequestProperty("Content-Type", "application/json")
-                c.connectTimeout = 15_000
-                c.readTimeout = 15_000
-                c.doOutput = true
-                val payload = JSONObject().put("topic", Config.ackTopic(this)).put("message", text).toString()
-                c.outputStream.use { it.write(payload.toByteArray()) }
-                val code = c.responseCode
-                if (code != 200) log("receipt failed: HTTP $code: $text")
-            } catch (e: Exception) {
-                log("receipt failed: ${e.javaClass.simpleName}: $text")
-            } finally {
-                c?.disconnect()
-            }
+                try {
+                    val code = dest.post(text)
+                    if (code != 200) log("receipt failed: HTTP $code: $text")
+                } catch (e: Exception) {
+                    log("receipt failed: ${e.javaClass.simpleName}: $text")
+                }
             }
         } catch (_: java.util.concurrent.RejectedExecutionException) {
             // Shut down between the check above and here.
@@ -1104,9 +1074,6 @@ class BridgeService : Service(), TextToSpeech.OnInitListener {
         /** Tags the confirm timer's callback, so ending the request removes it. */
         private val CONFIRM_TOKEN = Any()
         private val RUSTDESK = Command.Launch("rustdesk")
-        private const val PREF_CONFIRM_ID = "confirm_id"
-        private const val PREF_CONFIRM_MEMBER = "confirm_member"
-        private const val PREF_CONFIRM_DEADLINE = "confirm_deadline"
         /** How often the refused member topics are asked about again (design §2). */
         private const val PROBE_EVERY_MS = 15 * 60_000L
         private const val PROBE_TIMEOUT_MS = 5_000

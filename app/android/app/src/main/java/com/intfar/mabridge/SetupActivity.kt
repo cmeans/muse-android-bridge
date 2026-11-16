@@ -15,14 +15,18 @@ import android.widget.TextView
 import com.intfar.mabridge.protocol.FamilyMember
 import com.intfar.mabridge.protocol.MAX_MEMBERS
 import com.intfar.mabridge.protocol.Setup
+import com.intfar.mabridge.protocol.Receipts
+import com.intfar.mabridge.protocol.ackDestinationChanged
 import com.intfar.mabridge.protocol.addedMembers
 import com.intfar.mabridge.protocol.encodeMembers
+import com.intfar.mabridge.protocol.setupSaveAnswer
 import com.intfar.mabridge.protocol.hostOf
 import com.intfar.mabridge.protocol.isValidServer
 import com.intfar.mabridge.protocol.isValidSlug
 import com.intfar.mabridge.protocol.memberProblems
 import com.intfar.mabridge.protocol.setupChangeFor
 import java.text.Normalizer
+import kotlin.concurrent.thread
 
 /**
  * The helper's setup: server, device name, username, password and family members. It sits behind
@@ -336,6 +340,10 @@ class SetupActivity : Activity() {
     }
 
     private fun apply(old: Setup, new: Setup, logLine: String) {
+        // Before anything new is written: a request waiting for a tap when the server or device
+        // name changes is answered on the old server and ack topic, with the old credential
+        // (setupSaveAnswer, PROTOCOL §5(e)). Answered at the next start, it would go to the new ones.
+        answerWaitingForSave(old, new)
         Config.prefs(this).edit()
             .putString("server", new.server)
             .putString("slug", new.slug)
@@ -344,7 +352,7 @@ class SetupActivity : Activity() {
             .apply {
                 // State that belonged to the old server or topics would describe the new one:
                 // the status card's "last connected", and the id the next subscribe resumes from.
-                if (old.server != new.server || old.slug != new.slug) remove("last_connected").remove("last_message_id")
+                if (ackDestinationChanged(old, new)) remove("last_connected").remove("last_message_id")
             }
             .commit() // written before the restart below reads it
         if (pwField.text.isNotEmpty()) {
@@ -358,6 +366,36 @@ class SetupActivity : Activity() {
         BridgeControl.restartIfRunning(this)
         result.text = "Saved."
         refreshBridgeLine()
+    }
+
+    /**
+     * Answers the waiting request, if any, as SETUP_CHANGED when this save moves the receipts'
+     * destination. The destination (server, ack topic, credential) is read first, from the setup
+     * still stored; the request is cleared under [WaitingConfirm.lock], which the bridge's own
+     * answers hold too, so exactly one of them sends its receipt. A running bridge's prompt and
+     * timer go when the restart after the save stops it; a tap before that finds no request.
+     */
+    private fun answerWaitingForSave(old: Setup, new: Setup) {
+        if (!ackDestinationChanged(old, new)) return
+        val ctx = applicationContext
+        if (WaitingConfirm.read(ctx) == null) return // nothing waits: skip reading the credential
+        val dest = AckDestination.current(ctx)
+        val (pending, answer) = synchronized(WaitingConfirm.lock) {
+            val p = WaitingConfirm.read(ctx) ?: return
+            val a = setupSaveAnswer(p, old, new) ?: return
+            WaitingConfirm.clear(ctx)
+            p to a
+        }
+        BridgeLog.append(ctx, answer.log)
+        val text = Receipts.withId(answer.receipt, pending.id)
+        thread(name = "mab-setup-receipt") {
+            try {
+                val code = dest.post(text)
+                if (code != 200) BridgeLog.append(ctx, "receipt failed: HTTP $code: $text")
+            } catch (e: Exception) {
+                BridgeLog.append(ctx, "receipt failed: ${e.javaClass.simpleName}: $text")
+            }
+        }
     }
 
     private companion object {

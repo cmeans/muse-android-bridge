@@ -14,8 +14,11 @@ fun needsConfirm(command: Command, source: Source): Boolean =
  */
 data class PendingConfirm(val id: String, val member: String, val deadlineMs: Long)
 
-/** What happened to the waiting request. */
-enum class ConfirmEvent { OPEN, NOT_NOW, TIMEOUT, STOPPED, RESTARTED }
+/**
+ * What happened to the waiting request. SETUP_CHANGED: a setup save changed the server or the
+ * device name ([setupSaveAnswer]).
+ */
+enum class ConfirmEvent { OPEN, NOT_NOW, TIMEOUT, STOPPED, RESTARTED, SETUP_CHANGED }
 
 /** What to do about a [ConfirmEvent]: launch, or answer with [receipt] (bare, no `id=`) and write [log]. */
 sealed interface ConfirmOutcome {
@@ -40,6 +43,8 @@ fun confirmOutcome(pending: PendingConfirm?, event: ConfirmEvent, eventId: Strin
             ConfirmOutcome.Answer(Receipts.notConfirmed(RUSTDESK), "not-confirmed ($who): ${RUSTDESK.text} (timeout)")
         ConfirmEvent.RESTARTED ->
             ConfirmOutcome.Answer(Receipts.notConfirmed(RUSTDESK), "not-confirmed ($who): ${RUSTDESK.text} (restart)")
+        ConfirmEvent.SETUP_CHANGED ->
+            ConfirmOutcome.Answer(Receipts.notConfirmed(RUSTDESK), "not-confirmed ($who): ${RUSTDESK.text} (setup changed)")
         ConfirmEvent.STOPPED ->
             ConfirmOutcome.Answer(Receipts.disabled(RUSTDESK), "disabled ($who): ${RUSTDESK.text} (while waiting)")
     }
@@ -49,7 +54,8 @@ fun confirmOutcome(pending: PendingConfirm?, event: ConfirmEvent, eventId: Strin
  * The event to decide on at [nowMs]: an OPEN, NOT_NOW or STOPPED on a request whose deadline has
  * passed counts as [ConfirmEvent.TIMEOUT], so a late answer (the timer stops in deep sleep, or
  * the unlock took past the deadline) is `not-confirmed` whatever it was (PROTOCOL §5) and
- * launches nothing. RESTARTED already answers `not-confirmed` and keeps its own log reason.
+ * launches nothing. RESTARTED and SETUP_CHANGED already answer `not-confirmed` and keep their
+ * own log reasons.
  * Every other event, and any event with nothing pending, is unchanged.
  */
 fun effectiveEvent(pending: PendingConfirm?, event: ConfirmEvent, nowMs: Long): ConfirmEvent =
@@ -70,3 +76,22 @@ fun isExpired(pending: PendingConfirm, nowMs: Long): Boolean = nowMs >= pending.
  */
 fun onConfirmRequest(pending: PendingConfirm?, id: String, member: String, nowMs: Long): PendingConfirm? =
     if (pending != null) null else PendingConfirm(id, member, nowMs + CONFIRM_TIMEOUT_MS)
+
+/**
+ * Whether saving [new] over [old] moves where receipts go: the server, or the device name in the
+ * ack topic `mab-<device>-ack`. State that belonged to the old place ("last connected", the
+ * resume id, a waiting request) doesn't carry over.
+ */
+fun ackDestinationChanged(old: Setup, new: Setup): Boolean = old.server != new.server || old.slug != new.slug
+
+/**
+ * What a setup save does with the waiting request: when it moves the receipts' destination
+ * ([ackDestinationChanged]), the save answers [pending] as SETUP_CHANGED (`not-confirmed`) on the
+ * old server and ack topic, with the old credential, before writing the new setup (QA r1);
+ * answered at the next start instead, it would go to the new place, which has no use for it and
+ * may refuse it. Null when nothing waits or the destination stays: the bridge answers it as before.
+ */
+fun setupSaveAnswer(pending: PendingConfirm?, old: Setup, new: Setup): ConfirmOutcome.Answer? {
+    if (pending == null || !ackDestinationChanged(old, new)) return null
+    return confirmOutcome(pending, ConfirmEvent.SETUP_CHANGED, pending.id) as ConfirmOutcome.Answer
+}

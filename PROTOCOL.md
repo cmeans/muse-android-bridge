@@ -253,7 +253,9 @@ d. Only one request waits at a time. A second family `launch rustdesk` while
    tapped while STOP is on. Past the deadline, STOP answers `not-confirmed`
    like a late tap (c).
 e. The pending request is kept across a restart: the next start withdraws it
-   and answers `not-confirmed`.
+   and answers `not-confirmed`. A setup save that changes the server or the
+   device name withdraws it at once instead, before the new setup is written,
+   and answers `not-confirmed` on the old server and ack topic.
 
 There is exactly one receipt per message, sent when the outcome is known (§6).
 
@@ -276,7 +278,7 @@ err <command> cannot-launch id=<id>        launch only; "Display over other apps
 err <command> blocked id=<id>              launch only; announced and sent, but the app wasn't seen in front within 5 s; it may still appear (don't resend at once)
 err <command> rate-limited id=<id>         over the channel's limit (§3): 3 ring find or 10 launches per 10 minutes; nothing was done
 err <command> declined id=<id>             family launch rustdesk only; the owner tapped Not now (§5, confirm flow); nothing was opened
-err <command> not-confirmed id=<id>        family launch rustdesk only; no tap within 2 minutes, a tap or STOP after that, or the bridge restarted while waiting; nothing was opened
+err <command> not-confirmed id=<id>        family launch rustdesk only; no tap within 2 minutes, a tap or STOP after that, the bridge restarted while waiting, or a setup save moved the server or device name (answered on the old ones); nothing was opened
 err <command> pending id=<id>              family launch rustdesk only; another request is already waiting for the owner; no second prompt
 err unknown-command id=<id>                never echoes the body
 dropped-stale <command> id=<id>            stale and a registry command on its channel
@@ -296,7 +298,8 @@ the phone handles it, and the phone accepts a command up to 2 minutes old
 be later: the deadline is noticed at the next line read from the server, up to
 about 45 s late on a live connection, and on a dead connection not until the
 phone next wakes. If the bridge was stopped while a request waited, the answer
-comes at its next start. Publishers must not resend while waiting.
+comes at its next start, or at once from a setup save that changes the server
+or device name (§5e). Publishers must not resend while waiting.
 
 A duplicate gets no receipt, including a replayed copy of a message already
 handled that is now older than 120 s (its first receipt stands).

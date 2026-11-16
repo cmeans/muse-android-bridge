@@ -122,4 +122,40 @@ class RustdeskConfirmTest {
         assertTrue(isExpired(pending, 1_000_001L))
         assertFalse(isExpired(pending, 999_999L))
     }
+
+    // QA r1: a request waiting across a server or device change is answered by the save, on the
+    // old server and ack topic, before the new ones are written.
+    private val setup = Setup("https://ntfy.example.com", "p", "p-phone", listOf(FamilyMember("m1", "Alex")))
+    private val setupChanged = ConfirmOutcome.Answer(
+        "err launch rustdesk not-confirmed",
+        "not-confirmed (family/m1): launch rustdesk (setup changed)",
+    )
+
+    @Test fun setupChangeIsNotConfirmed() {
+        assertEquals(setupChanged, confirmOutcome(pending, ConfirmEvent.SETUP_CHANGED, pending.id))
+    }
+
+    @Test fun serverOrDeviceChangeAnswersTheWaitingRequest() {
+        assertEquals(setupChanged, setupSaveAnswer(pending, setup, setup.copy(server = "https://other.example.com")))
+        assertEquals(setupChanged, setupSaveAnswer(pending, setup, setup.copy(slug = "q")))
+        // Past its deadline it's still not-confirmed, with the setup-change reason.
+        assertEquals(ConfirmEvent.SETUP_CHANGED, effectiveEvent(pending, ConfirmEvent.SETUP_CHANGED, pending.deadlineMs + 1))
+    }
+
+    @Test fun otherSetupChangesLeaveTheWaitingRequest() {
+        // Same server and ack topic: the running bridge answers it as before.
+        assertNull(setupSaveAnswer(pending, setup, setup.copy(username = "other")))
+        assertNull(setupSaveAnswer(pending, setup, setup.copy(members = listOf(FamilyMember("m1", "Alex"), FamilyMember("m2", "Bo")))))
+        assertNull(setupSaveAnswer(pending, setup, setup))
+    }
+
+    @Test fun setupChangeWithNothingWaitingAnswersNothing() {
+        assertNull(setupSaveAnswer(null, setup, setup.copy(server = "https://other.example.com")))
+    }
+
+    @Test fun destinationChangeIsServerOrDevice() {
+        assertTrue(ackDestinationChanged(setup, setup.copy(server = "https://other.example.com")))
+        assertTrue(ackDestinationChanged(setup, setup.copy(slug = "q")))
+        assertFalse(ackDestinationChanged(setup, setup.copy(username = "other", members = emptyList())))
+    }
 }
