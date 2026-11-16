@@ -61,9 +61,9 @@ jobs:
           cache-provider: basic
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Unit tests
-        run: ./gradlew --no-daemon testDebugUnitTest
+        run: ./gradlew testDebugUnitTest
       - name: Debug build
-        run: ./gradlew --no-daemon assembleDebug
+        run: ./gradlew assembleDebug
       - name: Lint
         # Fails on lint errors only; warnings are reported, not fatal.
-        run: ./gradlew --no-daemon lintDebug
+        run: ./gradlew lintDebug

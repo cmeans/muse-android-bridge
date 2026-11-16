@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
+# mcp-phone-commands #N, not this repo's.
 # Prints pass, fail or pending for a commit from the CI workflow, judged job by job (ported from
 # mcp-synology, where continue-on-error jobs made a run's own conclusion unreliable, #241). A job
 # named tool-quality is ignored as report-only (none here; don't name one that, or it's skipped

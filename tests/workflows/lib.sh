@@ -1,4 +1,7 @@
 # Shared helpers for the workflow tests (#3). Sourced by the *-cases.sh files, which run under
+
+# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
+# mcp-phone-commands #N, not this repo's.
 # bash with `set -u`. Each case builds a fresh $STATE for bin/gh, runs a workflow's run script
 # extracted with yq, and compares what happened (labels, status posts, exit code) with what it
 # should be.

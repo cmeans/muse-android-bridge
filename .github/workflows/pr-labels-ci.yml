@@ -1,5 +1,8 @@
 name: PR Label Automation (CI)
 
+# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
+# mcp-phone-commands #N, not this repo's.
+
 # Handles label transitions when a PR's checks finish (pass or fail).
 # Split from pr-labels.yml because workflow_run fires on every CI
 # completion (including merges to main), which caused noisy failures
@@ -13,7 +16,7 @@ name: PR Label Automation (CI)
 # A PR is promoted to Ready for QA only when the CI workflow has passed on its
 # head commit, judged job by job (mcp-synology #241): every job must succeed
 # (or be skipped). CodeQL's check run counts too, when the commit has one
-# (mcp-synology #578); this private repo on the free plan has none today, and
+# (mcp-synology #578); this repo has none today, and
 # a commit without one reads as no verdict from it.
 #
 # NOTE: References the workflow by name ("CI") here, and by file in

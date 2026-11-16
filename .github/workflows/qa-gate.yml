@@ -1,5 +1,8 @@
 name: QA Gate
 
+# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
+# mcp-phone-commands #N, not this repo's.
+
 on:
   pull_request:
     branches: [main]

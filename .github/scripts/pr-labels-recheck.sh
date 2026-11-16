@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
+# mcp-phone-commands #N, not this repo's.
 # The recheck that doesn't depend on an event (mcp-synology #549 and #339). A green PR can
 # strand on Awaiting CI when GitHub's run or job listings lag behind the last CI event, as nothing checks again after
 # that. So: settle each open PR on Awaiting CI or CI Failed, and each same-repository PR with no

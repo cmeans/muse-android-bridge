@@ -1,5 +1,8 @@
 name: PR Label Recheck
 
+# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
+# mcp-phone-commands #N, not this repo's.
+
 # A green PR can strand on Awaiting CI when GitHub's listings lag behind the last CI event,
 # since no later event checks again (mcp-synology #549 and #339), and CodeQL can fail after a
 # PR is promoted, with no event at all (mcp-synology #578). This checks on a schedule, with the same script as
@@ -9,9 +12,11 @@ name: PR Label Recheck
 # after merge. GitHub can delay a scheduled run.
 on:
   schedule:
-    # Hourly, not every 15 minutes as in mcp-synology: this repo is private, and every
-    # 15 minutes would take about 2,900 of the free plan's 2,000 Actions minutes a month.
-    - cron: "17 * * * *"
+    # Every 4 hours here (mcp-phone-commands: hourly). This repo is private, so each run
+    # bills at least a minute from the account's included Actions minutes, a pool shared
+    # with the account's other private repos (mcp-phone-commands' hourly recheck among
+    # them): every 4 hours is about 180 minutes a month.
+    - cron: "17 */4 * * *"
   workflow_dispatch:
 
 # No token permissions by default; the job asks only for what it uses (mcp-synology #203).
@@ -19,7 +24,7 @@ permissions: {}
 
 jobs:
   recheck:
-    if: github.repository == 'cmeans/mcp-phone-commands'
+    if: github.repository == 'cmeans/muse-android-bridge'
     runs-on: ubuntu-latest
     # A hung call mustn't hold the concurrency group below for hours.
     timeout-minutes: 15

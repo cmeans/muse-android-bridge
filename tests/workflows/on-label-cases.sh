@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
+# mcp-phone-commands #N, not this repo's.
 # on-label (pr-labels.yml) with the two Muse verdicts (#4, #8, PR #11): which verdict wins, how
 # it fails closed, and what the job reports. Run by tests/run.sh.
 set -u
