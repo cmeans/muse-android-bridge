@@ -200,7 +200,7 @@ class OwnerScreenTest {
     }
 
     @Test fun usernameIsLoggedAsAnExcerpt() {
-        val s = setupChangeFor(old, old.copy(username = "a b"), false)
+        val s = setupChangeFor(old, old.copy(username = "a\u2028b"), false)
         assertEquals("setup changed: username pilot-phone-phone -> a?b", s.logLine)
     }
 

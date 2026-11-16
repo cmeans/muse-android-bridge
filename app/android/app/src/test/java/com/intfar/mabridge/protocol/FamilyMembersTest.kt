@@ -293,7 +293,7 @@ class FamilyMembersTest {
 
     // #33 item 18: other Unicode spaces are refused, and the reason says so.
     @Test fun specialSpaceHasItsOwnReason() {
-        for (space in listOf(" ", " ", "　")) {
+        for (space in listOf("\u2009", "\u202F", "\u3000")) {
             val name = "Mary${space}Ann"
             assertFalse(isValidMemberName(name))
             assertEquals(
@@ -302,14 +302,14 @@ class FamilyMembersTest {
             )
         }
         // A no-break space is a plain space, so it isn't special.
-        assertTrue(memberProblems(listOf(FamilyMember("m1", "Mary Ann")), device).isEmpty())
+        assertTrue(memberProblems(listOf(FamilyMember("m1", "Mary\u00A0Ann")), device).isEmpty())
     }
 
     // #33 item 19: the stored lines decodeMembers drops are reported, by slug, never by name.
     @Test fun decodeReportsDroppedLines() {
         val stored = listOf(
             "m1\tAlex",
-            "m2\tAl‍ex", // name repeats m1's
+            "m2\tAl\u200Dex", // name repeats m1's
             "m1\tBo", // member id repeats
             "Bad\tRobin", // bad member id
             "m3\tRobin!", // bad name
