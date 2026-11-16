@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# A fake gh for the workflow tests (#3). It answers only the calls on-label (pr-labels.yml) and
+# qa-gate.yml make, from files in $STATE:
+#   pr.json      the pull request without labels: {head: {sha, ref, repo}, created_at}
+#   labels.json  the live labels, a JSON array of names; pr edit changes it
+#   labels.queue optional, one JSON array per line: each labels read first takes the next line
+#                as the live labels (a label changed between two reads); a line FAIL makes that
+#                read fail instead
+#   events.json  the issue events (a JSON array), runs.json the workflow runs ({workflow_runs})
+#   fail.<what>  makes that call fail: pulls, labels, events, runs, edit, status (every post) or
+#                status.<state> (posts of that state only)
+#   html.pulls   the PR read answers with an HTML page and exit 0, as gh does without --jq
+# As real gh does: events and runs come in pages (of 2 here), and only the first page without
+# --paginate; --jq applies to each page on its own, and prints a string result raw. A status post
+# must be to statuses/$EVENT_SHA with context "QA Gate", or it fails.
+# Every call is appended to $STATE/calls, every status post to $STATE/statuses, every label
+# change to $STATE/edits.
+set -euo pipefail
+: "${STATE:?STATE must name the state directory of the test}"
+echo "gh $*" >> "$STATE/calls"
+
+jqf=""
+paginate=0
+args=("$@")
+for ((i = 0; i < ${#args[@]}; i++)); do
+  case "${args[i]}" in
+    --jq) jqf="${args[i + 1]}" ;;
+    --paginate) paginate=1 ;;
+  esac
+done
+
+fail_if() {
+  if [ -e "$STATE/fail.$1" ]; then
+    echo "gh: HTTP 502: Bad Gateway (fake: fail.$1)" >&2
+    exit 1
+  fi
+}
+
+labels() {
+  fail_if labels
+  if [ -s "$STATE/labels.queue" ]; then
+    local next
+    next=$(head -n 1 "$STATE/labels.queue")
+    tail -n +2 "$STATE/labels.queue" > "$STATE/labels.queue.next"
+    mv "$STATE/labels.queue.next" "$STATE/labels.queue"
+    if [ "$next" = FAIL ]; then
+      echo "gh: HTTP 502: Bad Gateway (fake: FAIL in labels.queue)" >&2
+      exit 1
+    fi
+    echo "$next" > "$STATE/labels.json"
+  fi
+  cat "$STATE/labels.json"
+}
+
+reply() {  # print $1 (JSON), through --jq if one was given
+  if [ -n "$jqf" ]; then jq -rc "$jqf" <<< "$1"; else printf '%s\n' "$1"; fi
+}
+
+# paged <array file> [wrap key]: the pages of 2 items gh would fetch, each through --jq.
+paged() {
+  local file=$1 key=${2:-} n page
+  if [ -n "$key" ]; then n=$(jq --arg k "$key" '.[$k] | length' "$file"); else n=$(jq length "$file"); fi
+  for ((page = 0; page == 0 || page * 2 < n; page++)); do
+    if [ -n "$key" ]; then
+      reply "$(jq -c --arg k "$key" --argjson p "$page" '{($k): .[$k][$p * 2:$p * 2 + 2]}' "$file")"
+    else
+      reply "$(jq -c --argjson p "$page" '.[$p * 2:$p * 2 + 2]' "$file")"
+    fi
+    if [ "$paginate" -eq 0 ]; then break; fi
+  done
+}
+
+case "$1 $2" in
+  "pr view")
+    # Assigned first: a failure inside "$(...)" in an argument wouldn't stop the script.
+    live=$(labels)
+    reply "$(jq -c '{labels: map({name: .})}' <<< "$live")"
+    ;;
+  "pr edit")
+    fail_if edit
+    for ((i = 2; i < ${#args[@]}; i++)); do
+      case "${args[i]}" in
+        --remove-label)
+          l="${args[i + 1]}"
+          jq -c --arg l "$l" 'map(select(. != $l))' "$STATE/labels.json" > "$STATE/labels.next"
+          mv "$STATE/labels.next" "$STATE/labels.json"
+          echo "remove $l" >> "$STATE/edits"
+          ;;
+        --add-label)
+          l="${args[i + 1]}"
+          jq -c --arg l "$l" 'if index($l) then . else . + [$l] end' "$STATE/labels.json" \
+            > "$STATE/labels.next"
+          mv "$STATE/labels.next" "$STATE/labels.json"
+          echo "add $l" >> "$STATE/edits"
+          ;;
+      esac
+    done
+    ;;
+  "pr comment")
+    echo "comment" >> "$STATE/edits"
+    ;;
+  api*)
+    path=""
+    for a in "${args[@]:1}"; do
+      case "$a" in repos/*) path="$a" ;; esac
+    done
+    case "$path" in
+      */statuses/*)
+        fail_if status
+        state="" desc="" context=""
+        for ((i = 1; i < ${#args[@]} - 1; i++)); do
+          if [ "${args[i]}" = -f ]; then
+            case "${args[i + 1]}" in
+              state=*) state="${args[i + 1]#state=}" ;;
+              description=*) desc="${args[i + 1]#description=}" ;;
+              context=*) context="${args[i + 1]#context=}" ;;
+            esac
+          fi
+        done
+        fail_if "status.$state"
+        if [ "$path" != "repos/${REPO:-}/statuses/${EVENT_SHA:-}" ] || [ "$context" != "QA Gate" ]; then
+          echo "gh: HTTP 422 (fake: a status must go to $REPO/statuses/$EVENT_SHA as QA Gate," \
+            "not $path as '$context')" >&2
+          exit 1
+        fi
+        echo "$state: $desc" >> "$STATE/statuses"
+        echo '{}'
+        ;;
+      */issues/*/events*)
+        fail_if events
+        paged "$STATE/events.json"
+        ;;
+      */actions/runs*)
+        fail_if runs
+        paged "$STATE/runs.json" workflow_runs
+        ;;
+      */pulls/*)
+        fail_if pulls
+        if [ -e "$STATE/html.pulls" ]; then
+          echo '<!DOCTYPE html><html><body>Unicorn! This page is taking too long</body></html>'
+          exit 0
+        fi
+        live=$(labels)
+        reply "$(jq -c --argjson l "$live" '. + {labels: ($l | map({name: .}))}' \
+          "$STATE/pr.json")"
+        ;;
+      *)
+        echo "fake gh: no answer for $*" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  *)
+    echo "fake gh: no answer for $*" >&2
+    exit 1
+    ;;
+esac

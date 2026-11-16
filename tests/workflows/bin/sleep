@@ -1,0 +1,3 @@
+#!/bin/sh
+# The workflow scripts wait between reads; the tests don't. Each wait is counted.
+echo "sleep $*" >> "${STATE:?}/calls"

@@ -1,0 +1,199 @@
+name: QA Gate
+
+# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
+# mcp-phone-commands #N, not this repo's.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  statuses: write
+  pull-requests: read
+  # When the head commit arrived and when each approval was added (#7): workflow runs and the
+  # PR's issue events.
+  actions: read
+  issues: read
+
+# One run per PR at a time. A run still waiting is replaced by a newer one (GitHub keeps one
+# pending run per group), and since each run reads the live labels, the last status is right.
+# pr-labels.yml's on-label also posts this status (pending only, after it removes Muse Approved),
+# outside this group; a late pending from it can stand until the next label change, which fails
+# closed.
+concurrency:
+  group: qa-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  qa-approved:
+    runs-on: ubuntu-latest
+    # A hung call mustn't hold the concurrency group: the worst case is 14 reads, two paged
+    # reads (runs and events), 60 s of waiting and two posts.
+    timeout-minutes: 5
+    steps:
+      - name: Set QA status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          EVENT_SHA: ${{ github.event.pull_request.head.sha }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          set -euo pipefail
+          # This repo's merge gate is QA Approved (the maintainer) AND Muse Approved, with no
+          # Muse Failed. pr-labels.yml removes all three on a push or reopen, and success also
+          # checks the approvals came after this commit (#7), in case that removal failed. Its
+          # on-label copies the label rule and the "Waiting for:" wording, not the #7 time check
+          # (it never posts success); change both.
+          PENDING="Waiting for: QA Approved (maintainer), Muse Approved"
+          post() {
+            gh api "repos/$REPO/statuses/$EVENT_SHA" --method POST \
+              -f state="$1" -f description="$2" -f context="QA Gate" > /dev/null || return
+            echo "QA Gate: $1 on $EVENT_SHA"
+          }
+          # If any read fails, fail closed: an earlier success must not stand (for example, a
+          # run for an added Muse Failed whose label read errored). An ERR trap doesn't fire
+          # inside a function, so a function that reads is called as `f || false`. `||` also turns
+          # off errexit inside f, so f's exit status must carry the failure: f ends on the command
+          # that can fail (read_missing is one command) or returns on it (post's `|| return`).
+          trap 'trap - ERR; echo "Failed (run script line $LINENO): $BASH_COMMAND"; post pending "QA Gate check failed; change a label to retry"' ERR
+
+          # A new commit can't have been approved yet (mcp-synology #217). The push event's label
+          # list still holds "QA Approved" for a moment, until pr-labels.yml removes
+          # it, and that removal (made with GITHUB_TOKEN) never triggers this
+          # workflow again, so reading labels here left new commits green.
+          # Reopened is the same (#4): the labels may predate commits pushed while the PR was
+          # closed, and pr-labels.yml's on-push removes the approvals on reopen too.
+          case "$ACTION" in
+            opened|synchronize|reopened)
+              post pending "$PENDING"
+              exit 0
+              ;;
+          esac
+
+          # labeled / unlabeled: decide from the PR as it is now, not the event payload.
+          # Muse Approved and Muse Failed exclude each other: adding one makes pr-labels.yml's
+          # on-label remove the other (if the other was added more than 10 s earlier and the added
+          # one is still on), with GITHUB_TOKEN, which never runs this workflow again. Both added
+          # within 10 s (one call of the web label picker, say): neither is removed (#8).
+          # A run that reads the labels before that removal lands sees both, and whatever it
+          # decided would stand. So while both are on, wait for the removal (it lands in about
+          # 10 s, or about 20 s when on-label re-reads the events), then decide from what's
+          # left. Still both after a minute: fail closed. The removal can still land after
+          # that, and no run follows it, so the pending text has to hold either way.
+          PR_JSON=$(gh api "repos/$REPO/pulls/$PR")
+          both() {
+            jq -e '[.labels[].name] | index("Muse Approved") != null and index("Muse Failed") != null' \
+              <<< "$PR_JSON" > /dev/null
+          }
+          tries=0
+          while both && [ "$tries" -lt 12 ]; do
+            echo "Both Muse labels are on; waiting for pr-labels.yml to remove one ($tries/12)"
+            sleep 5
+            tries=$((tries + 1))
+            PR_JSON=$(gh api "repos/$REPO/pulls/$PR")
+          done
+          if both; then
+            echo "Both Muse labels still on after $((tries * 5)) s"
+            post pending "Both Muse labels were on for a minute; remove the one that doesn't apply, or change a label to re-check if one is gone"
+            exit 0
+          fi
+          # MISSING lists what's still needed, so the pending text names it.
+          read_missing() {
+            IFS=$'\t' read -r HEAD MISSING < <(jq -r \
+              '[.head.sha, ([.labels[].name] as $l | [
+                  (if ($l | index("QA Approved")) == null then "QA Approved (maintainer)" else empty end),
+                  (if ($l | index("Muse Approved")) == null then "Muse Approved" else empty end),
+                  (if ($l | index("Muse Failed")) != null then "Muse Failed removed" else empty end)
+                ] | if length == 0 then "-" else join(", ") end)] | @tsv' <<< "$PR_JSON")
+          }
+          read_missing || false
+          if [ "$HEAD" != "$EVENT_SHA" ]; then
+            # A newer commit landed after this label event; its own run sets its status.
+            echo "Stale event: $EVENT_SHA is no longer the head ($HEAD); not changing QA Gate"
+            exit 0
+          fi
+          if [ "$MISSING" != "-" ]; then
+            post pending "Waiting for: $MISSING"
+            exit 0
+          fi
+          # The approvals must be newer than the head commit (#7). pr-labels.yml's on-push removes
+          # them on a push or reopen, but if that call fails they stay on, and the next label
+          # event would read them here and post success for a commit nobody approved.
+          # When the head arrived: the first pull_request run for this commit on this PR's head
+          # repository and branch since the PR was opened or last reopened or force-pushed
+          # (GitHub's clock; commit dates are the committer's). The runs list for a commit holds
+          # every PR's runs, so each bound keeps another source out:
+          # - the head repository: a fork's PR from a branch with the same name;
+          # - the PR's opening: an earlier PR on the same branch name;
+          # - the last reopen or force push: the branch coming back to a commit it had before (a
+          #   force push back to it, or a force push away and a fast-forward back), whose old
+          #   runs would date it too early.
+          # Each approval's latest "labeled" event must come after it; the same second counts as
+          # before. Times are compared as numbers (fromdateiso8601, which
+          # refuses a format it doesn't know, so a change there fails closed). No run found:
+          # fail closed. That includes a commit whose only runs are label events' (a run starts
+          # a few seconds after its event, so the first label counts as earlier): re-adding it
+          # fixes that.
+          BRANCH=$(jq -er '.head.ref' <<< "$PR_JSON")
+          OPENED=$(jq -er '.created_at' <<< "$PR_JSON")
+          # -e: a fork that's been deleted has no head repository; fail closed.
+          HEADREPO=$(jq -er '.head.repo.full_name' <<< "$PR_JSON")
+          RUNS=$(gh api --paginate \
+            "repos/$REPO/actions/runs?head_sha=$EVENT_SHA&event=pull_request&per_page=100" \
+            --jq '.workflow_runs[] | {head_branch, head_repo: .head_repository.full_name, created_at}')
+          EVENTS=$(gh api --paginate "repos/$REPO/issues/$PR/events?per_page=100" \
+            --jq '.[] | {event, created_at, label: (.label.name // null)}')
+          # "<added before the head>|<no labeled event>|<times>": two lists, or "unknown" in the
+          # first field when no run dates the head. <times> is for the log: what the verdict came
+          # from, so it can be checked against the runs and events by hand.
+          VERDICT=$(jq -rn --arg branch "$BRANCH" --arg repo "$HEADREPO" --arg opened "$OPENED" \
+            --slurpfile runs <(printf '%s\n' "$RUNS") --slurpfile events <(printf '%s\n' "$EVENTS") '
+            def t: fromdateiso8601;
+            ([$events[] | select(.event == "reopened" or .event == "head_ref_force_pushed")
+                | .created_at | t] + [$opened | t] | max) as $moved
+            | ([$runs[] | select(.head_branch == $branch and .head_repo == $repo) | .created_at | t
+                | select(. > $moved)] | min) as $arrived
+            | [("QA Approved", "Muse Approved") as $l
+                | {l: $l, at: ([$events[] | select(.event == "labeled" and .label == $l)
+                    | .created_at | t] | max)}] as $approvals
+            # The parentheses matter: jq 1.7 (on ubuntu-latest until it moved to ubuntu-26.04
+            # and jq 1.8.1) binds `as` to the last term of a sum only; jq 1.8 binds the whole sum.
+            # This comment is inside a single-quoted shell string: no apostrophes.
+            | def show: if . == null then "none" else todate end;
+              ("head arrived \($arrived | show) (its first run after the PR opened or was last "
+                + "reopened or force-pushed, at \($moved | todate)); "
+                + ($approvals | map("\(.l) labeled \(.at | show)") | join("; ")))
+              as $times
+            | if $arrived == null then "unknown||\($times)"
+              else ($approvals | map(select(.at != null and .at <= $arrived) | .l) | join(", "))
+                + "|" + ($approvals | map(select(.at == null) | .l) | join(", ")) + "|\($times)"
+              end')
+          IFS='|' read -r BEFORE NONE TIMES <<< "$VERDICT"
+          if [ "$BEFORE" = unknown ]; then
+            echo "No pull_request run found for $EVENT_SHA on $HEADREPO:$BRANCH since the PR opened or was last reopened or force-pushed: $TIMES"
+            post pending "QA Gate couldn't tell when this commit arrived; change a label to retry"
+            exit 0
+          fi
+          if [ -n "$BEFORE" ] || [ -n "$NONE" ]; then
+            echo "Added before $EVENT_SHA arrived: ${BEFORE:--}; no labeled event: ${NONE:--}; $TIMES"
+            if [ -n "$NONE" ]; then
+              post pending "No record of when $NONE was added; remove and re-add"
+            else
+              post pending "Approved before this commit; remove and re-add: $BEFORE"
+            fi
+            exit 0
+          fi
+          # `|| false`: a success post that errors may still have landed, so it must reach the
+          # ERR trap (pending), not exit inside the function and skip the re-read below.
+          post success "QA Approved and Muse Approved" || false
+          # pr-labels.yml's on-label can remove Muse Approved (with GITHUB_TOKEN, so no new run
+          # here) between the read above and that post. It posts pending after its removal, but
+          # that can land before this success. So read once more: if anything is missing now,
+          # this pending is the last post, whichever order the two ran in (#4).
+          PR_JSON=$(gh api "repos/$REPO/pulls/$PR")
+          read_missing || false
+          if [ "$HEAD" = "$EVENT_SHA" ] && [ "$MISSING" != "-" ]; then
+            post pending "Waiting for: $MISSING"
+          fi

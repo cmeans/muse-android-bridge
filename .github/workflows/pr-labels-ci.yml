@@ -1,0 +1,83 @@
+name: PR Label Automation (CI)
+
+# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
+# mcp-phone-commands #N, not this repo's.
+
+# Handles label transitions when a PR's checks finish (pass or fail).
+# Split from pr-labels.yml because workflow_run fires on every CI
+# completion (including merges to main), which caused noisy failures
+# when there was no associated PR.
+#
+# Ported from mcp-synology at 6fc7330 with pr-labels.yml, qa-gate.yml,
+# pr-behind-main.yml, pr-labels-recheck.yml and .github/scripts/pr-*.sh; its issue
+# numbers are prefixed "mcp-synology". Their tests (tests/test_ci_workflows.py) stayed
+# there. This repo tests only pr-labels.yml's on-label job and qa-gate.yml
+# (tests/workflows, #3); test a change to the rest against that suite.
+# A PR is promoted to Ready for QA only when the CI workflow has passed on its
+# head commit, judged job by job (mcp-synology #241): every job must succeed
+# (or be skipped). CodeQL's check run counts too, when the commit has one
+# (mcp-synology #578); this repo has none today, and
+# a commit without one reads as no verdict from it.
+#
+# NOTE: References the workflow by name ("CI") here, and by file in
+# .github/scripts/pr-checks-state.sh, which pr-labels.yml (on-unlabel) and
+# pr-labels-recheck.yml use too. If it's renamed, update both.
+#
+# LIMITATION: workflow_run triggers always run from the default branch
+# (main), not the PR branch. Changes to this file cannot be tested
+# on a PR — they take effect only after merge.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+# No token permissions by default; each job asks only for what it uses (mcp-synology #203).
+permissions: {}
+
+jobs:
+  # When CI finishes on a PR: Ready for QA once it has passed on the
+  # head commit, with CodeQL's check if it has one, CI Failed once either has a
+  # failed job or CodeQL has failed, nothing while one is still running (its own
+  # completion re-runs this) or a result is missing, CodeQL's included
+  # (pr-labels-recheck.yml checks that again). Skips if Dev Active is
+  # present (dev isn't done yet; on-unlabel in pr-labels.yml takes over).
+  on-checks-complete:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    # Evaluate one commit at a time.
+    concurrency:
+      group: pr-labels-ci-${{ github.event.workflow_run.head_sha }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+      checks: read
+    steps:
+      # workflow_run always runs from main, so this is main's script, never a PR's.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Update CI labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+        run: |
+          # Find the open PR whose head commit AND head repository match this run
+          # (mcp-synology #203). Never by branch name: a fork chooses its branch name, so a fork
+          # branch named after a maintainer branch used to relabel the maintainer's
+          # PR. Covers same-repo, Dependabot and fork PRs alike; a run whose commit
+          # is no longer any PR's head (force-pushed away) matches nothing. An API
+          # or permissions error fails the job rather than passing as "no PR".
+          PR=$(gh pr list --repo "$REPO" --state open --limit 100 \
+            --json number,headRefOid,headRepositoryOwner,headRepository \
+            --jq '[.[] | select(.headRefOid == env.HEAD_SHA and (.headRepositoryOwner.login + "/" + .headRepository.name) == env.HEAD_REPO) | .number] | first // empty')
+
+          if [ -z "$PR" ]; then
+            echo "No PR associated with this workflow run — exiting"
+            exit 0
+          fi
+
+          bash .github/scripts/pr-labels-settle.sh "$PR" "$HEAD_SHA"
