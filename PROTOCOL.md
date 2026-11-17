@@ -144,7 +144,10 @@ Rules:
   volume, repeatedly, until the owner flips a STOP switch; the per-channel
   rate limits (at most 3 `ring find` and 10 launches per 10 minutes) bound
   how often. Revocation = rotate that token / disable that user; the other
-  channels are unaffected. To cut off one family member, `deny` their user on
+  channels are unaffected. This bound assumes the token's user holds only
+  these grants: a publisher that shares a user with other grants exposes
+  them too, and revoking it cuts those off as well
+  (`server/ntfy-provisioning.md` recommends a dedicated user). To cut off one family member, `deny` their user on
   their topic (and on the ack topic), and rotate their token or remove the
   user; the owner channel and every other member are unaffected.
 - Credentials live with the publishers (agent secret storage, family
@@ -336,9 +339,14 @@ installed. A command refused by the limit doesn't count. The first
 refusal of a run (per channel and kind) gets a `rate-limited` receipt;
 the run's repeats within the window are logged only, and a command that
 runs again starts a new run. The limits are counted since the executor
-last started. Receipts the limit doesn't cap (`unknown-command`, and
-`disabled`, whether from the STOP check or from the re-check before a
-waiting command runs, §7) are not capped yet.
+last started. The limits count only `ring find` and launches, and nothing
+else caps the other receipts: `unknown-command`, `disabled` from the STOP
+check (§5 step 3), and the receipts of `status report` and the RustDesk
+placeholders (`not-implemented`). Each such command gets its receipt, so
+a holder of a channel's credential can make the phone publish one receipt
+per message it sends (issue #11). A `ring find` or launch refused later,
+at the confirm step or the re-check before it runs (§7), has already
+counted toward its limit, so its `disabled` receipt is bounded by it.
 
 Receipts confirm what the *executor did*, not what the user did next
 (`ok launch meet` means Meet came to the foreground, not that anyone

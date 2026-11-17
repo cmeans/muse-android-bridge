@@ -19,12 +19,21 @@ needed or performed — user/ACL changes are live database operations.
 | Principal | mab-pilot-phone-owner | mab-pilot-phone-family | mab-pilot-phone-ack |
 |---|---|---|---|
 | `pilot-phone-phone` (user, on-phone credential; `<device>-phone` per PROTOCOL §3) | read-only | read-only | write-only |
-| `owner-pub` (the owner channel's publisher: the owner's agent) | write-only | — | read-only |
+| `owner-pub` (the owner channel's publisher: the owner's agent; a dedicated user is recommended, see below) | write-only | — | read-only |
 | `admin` (admin) | full (admin role) | full | full |
 
 Credential values live only in a root-only file on the server (0600) as
-`PILOT_PHONE_USER` / `PILOT_PHONE_PASSWORD`. The publisher has its own user
-and token, kept in a 0600 file on its host.
+`PILOT_PHONE_USER` / `PILOT_PHONE_PASSWORD`.
+
+**Recommended:** give the owner channel's publisher a dedicated ntfy user
+(`owner-pub` above) with only these grants, and its own token in a 0600 file
+on its host. Revoking that token then cuts off the owner channel and nothing
+else. The reference deployment doesn't do this yet: its publisher uses an
+existing ntfy user that holds other grants too, with the grants above added
+to them (grants attach to the user, so its existing token picked them up).
+The checks below hold either way, as long as that user isn't an ntfy admin:
+the admin role ignores grants, so an admin publisher could read the owner
+topic, and the second check would catch it.
 
 ## Verification (2026-11-11, all as expected)
 
