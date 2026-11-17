@@ -336,9 +336,11 @@ installed. A command refused by the limit doesn't count. The first
 refusal of a run (per channel and kind) gets a `rate-limited` receipt;
 the run's repeats within the window are logged only, and a command that
 runs again starts a new run. The limits are counted since the executor
-last started. Receipts the limit doesn't cap (`unknown-command`, and
-`disabled`, whether from the STOP check or from the re-check before a
-waiting command runs, §7) are not capped yet.
+last started. The limits don't cover the `unknown-command` and `disabled`
+receipts (`disabled` whether from the STOP check or from the re-check
+before a waiting command runs, §7), and nothing else caps them: each such
+command gets its receipt. A holder of a channel's credential can therefore
+make the phone publish one receipt per message it sends (issue #11).
 
 Receipts confirm what the *executor did*, not what the user did next
 (`ok launch meet` means Meet came to the foreground, not that anyone
