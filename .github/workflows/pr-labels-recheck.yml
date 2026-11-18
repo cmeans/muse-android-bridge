@@ -12,10 +12,11 @@ name: PR Label Recheck
 # after merge. GitHub can delay a scheduled run.
 on:
   schedule:
-    # Every 15 minutes, as in mcp-synology. It ran every 4 hours while this repo was
+    # Every 15 minutes (mcp-synology's cadence). It ran every 4 hours while this repo was
     # private, to save Actions minutes; a public repo's runs on standard GitHub-hosted
-    # runners use none.
-    - cron: "*/15 * * * *"
+    # runners use none. Offset to :07, :22, :37 and :52: GitHub's docs name the start of
+    # every hour as a high-load time when queued scheduled jobs can be delayed or dropped.
+    - cron: "7-59/15 * * * *"
   workflow_dispatch:
 
 # No token permissions by default; the job asks only for what it uses (mcp-synology #203).
