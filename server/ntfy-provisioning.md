@@ -19,21 +19,55 @@ needed or performed — user/ACL changes are live database operations.
 | Principal | mab-pilot-phone-owner | mab-pilot-phone-family | mab-pilot-phone-ack |
 |---|---|---|---|
 | `pilot-phone-phone` (user, on-phone credential; `<device>-phone` per PROTOCOL §3) | read-only | read-only | write-only |
-| `owner-pub` (the owner channel's publisher: the owner's agent; a dedicated user is recommended, see below) | write-only | — | read-only |
+| `owner-pub` (the owner channel's publisher: the owner's agent; a dedicated user, see below) | write-only | — | read-only |
 | `admin` (admin) | full (admin role) | full | full |
 
 Credential values live only in a root-only file on the server (0600) as
 `PILOT_PHONE_USER` / `PILOT_PHONE_PASSWORD`.
 
-**Recommended:** give the owner channel's publisher a dedicated ntfy user
-(`owner-pub` above) with only these grants, and its own token in a 0600 file
-on its host. Revoking that token then cuts off the owner channel and nothing
-else. The reference deployment doesn't do this yet: its publisher uses an
-existing ntfy user that holds other grants too, with the grants above added
-to it (grants attach to the user, so its existing token picked them up).
-The checks below hold either way, as long as that user isn't an ntfy admin:
-the admin role ignores grants, so an admin publisher could read the owner
-topic, and the second check would catch it.
+**Recommended, and what the reference deployment does now:** give the owner
+channel's publisher a dedicated ntfy user (`owner-pub` above) with only these
+grants, and its own token in a 0600 file on its host. Revoking that token then
+cuts off the owner channel and nothing else. Make it a plain user, not an ntfy
+admin: the admin role ignores grants, so an admin publisher could read the
+owner topic (the second check below would catch it).
+
+One `owner-pub` can serve several phones: it then holds these two grants on
+each phone's owner and ack topics and no others, and revoking its token cuts
+off the owner channel on all of them. To cut off one phone only, deny it both
+of that phone's topics, the owner topic and the ack topic (where it reads the
+phone's receipts and status reports):
+`ntfy access owner-pub mab-<device>-owner deny` and
+`ntfy access owner-pub mab-<device>-ack deny` (or `--reset` each). The token
+keeps working for the other phones.
+
+**What a revocation stops, and when.** A `deny` or `--reset` refuses new
+requests at once: the next publish gets 403 (F1 below), and so does the next
+read or new subscription. A subscription that is already open is not cut:
+it keeps receiving that topic (here, the phone's receipts on the ack topic)
+until it disconnects, even after its token or the user is removed, and its
+holder can keep it open indefinitely. To end it at once, restart the ntfy
+server after the `deny`; the reconnect is then refused. A restart has a
+cost: every subscriber on the server reconnects (every phone's owner and
+family channels included), a publish during the gap is refused and has to be
+sent again, and cached messages survive only if the server has a cache file.
+So restart for a leaked credential; for a planned removal it's optional.
+Checked on ntfy v2.11.0 (a test container, 2026-11-17); re-check after a
+server upgrade, and with any ACL cache option the server has turned on.
+
+How the reference deployment got there (it has two provisioned phones; only
+`pilot-phone`'s topics are written up here):
+- **2026-11-11:** the publisher was an existing ntfy user that held other
+  grants too, with the grants above added to it.
+- **2026-11-14:** after an audit, each phone's owner topic got its own
+  dedicated user for publishing (owner-topic write). The existing user kept
+  the ack-topic reads, with explicit no-access entries on the owner topics.
+- **2026-11-17:** one dedicated, non-admin `owner-pub` replaced them for both
+  phones and took over the ack-topic reads. The per-phone publishing users
+  still exist but hold no grants (their tokens get 403, not the 401 of a
+  removed user). The existing user lost all its bridge entries and holds
+  only grants unrelated to the bridge. No wildcard grant was used at any
+  step.
 
 ## Verification (2026-11-11, all as expected)
 
@@ -45,6 +79,10 @@ topic, and the second check would catch it.
 - phone user publishes receipt to ack → 200; reads ack → 403
 - phone user reads family topic → 200; reads a topic it has no grant on → 403
 - publisher token reads ack topic → receives `ok launch meet`
+
+Re-checked on 2026-11-17 with the dedicated `owner-pub` token: publish to an
+owner topic → 200, stored; read an owner topic → 403; read an ack topic →
+works. The replaced per-phone publishing tokens now get 403 on publish.
 
 ## Family members (protocol 0.5)
 
@@ -71,9 +109,14 @@ ntfy user `fam-m1`. Every grant names the exact topic, never a wildcard:
    reads the new topic → 200.
 
 **Removing a member: phone first.** Remove the member in the phone's setup,
-then revoke the grants (`ntfy access fam-m1 mab-pilot-phone-family-m1 deny`,
-or `ntfy access --reset fam-m1 mab-pilot-phone-family-m1`, and the phone
-user's read with `ntfy access --reset <phone-user> <member-topic>`).
+then revoke the grants: the member's write on their topic
+(`ntfy access fam-m1 mab-pilot-phone-family-m1 deny`, or
+`ntfy access --reset fam-m1 mab-pilot-phone-family-m1`), the member's read on
+this phone's ack topic (`ntfy access --reset fam-m1 mab-pilot-phone-ack`, or
+`deny`; otherwise they keep reading this phone's receipts, and an open
+subscription keeps them until it disconnects: see "What a revocation stops"
+above), and the phone user's read with
+`ntfy access --reset <phone-user> <member-topic>`.
 Revoking the phone's read first would leave that member shown
 on the phone as unreachable until it's removed.
 
@@ -114,16 +157,27 @@ members' topics and the owner channel still work after the `deny`:
 2. `ntfy access drill-pub mab-pilot-phone-family deny` (the revocation move;
    under 0.5, on the member's topic).
 3. Publish again with the **same, still-valid token** → **403**. ACL denial
-   is immediate and beats token validity — revoking a family member does
-   not require chasing their token.
+   refuses the next publish at once and beats token validity: stopping a
+   family member's commands does not require chasing their token. (Reads are
+   different: an open subscription survives the `deny`; see "What a
+   revocation stops" above.)
 4. Cleanup: drill user removed entirely, token file deleted, user list
    verified clean; publish attempt afterwards → **401**.
 
-Standing revocation procedure for a real family member: apply `deny`
-on their member topic (and the ack topic) first (instant stop), then revoke their tokens /
-remove the user at leisure. Test-plan F1 is satisfied for the ACL
-mechanism; it will be re-run with the real family credentials during
-Phase 4 provisioning.
+Standing revocation procedure for a real family member. Their ntfy user is
+shared across every phone they help, so a `deny` on one phone's topics
+leaves the others open.
+- **Leaked credential:** deny the user on every member topic and ack topic it
+  holds, on every phone (`ntfy access <user>` lists them), or remove the user
+  at once; then restart the ntfy server to end any open subscription
+  ("What a revocation stops" above). Their commands are refused from the
+  `deny` on.
+- **Removing them from one phone only:** follow "Removing a member" above
+  for that phone, and keep the user and token for the others.
+
+Test-plan F1 is satisfied for the ACL mechanism's refusal of publishes; it
+will be re-run with the real family credentials, with the ack-read checks
+TEST-PLAN F1 now lists, during Phase 4 provisioning.
 
 ## F2 phone-credential scope (2026-11-11, PASSED via the public path)
 
