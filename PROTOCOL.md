@@ -162,10 +162,11 @@ Rules:
   to take them off that phone for good, remove the member there first:
   `server/ntfy-provisioning.md`, "Removing a member"). A leaked family
   credential needs that `deny` on every phone they help, or the user
-  removed. A `deny`, a rotated token and a removed user all refuse new
-  publishes and reads at once, but a subscription already open keeps
-  receiving until it disconnects; a server restart ends it at once
-  (`server/ntfy-provisioning.md`, "What a revocation stops, and when").
+  removed. A `deny`, a rotated token, a changed password and a removed
+  user all refuse new publishes and reads at once, but a subscription
+  already open keeps receiving until it disconnects; a server restart ends
+  it at once (`server/ntfy-provisioning.md`, "What a revocation stops, and
+  when").
 - Credentials live with the publishers (agent secret storage, family
   members' password managers). The phone's owner never handles, sees, or
   types a credential for the owner channel.
