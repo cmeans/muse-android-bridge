@@ -139,27 +139,33 @@ Rules:
 
 - The phone's credential is read-mostly by design: stealing it lets an
   attacker *watch* commands and *forge receipts*, never issue commands.
-- A leaked publisher token can only fire registry commands, and read
-  receipts, on the channels its user holds grants for: one channel per
-  phone (the owner channel, or that member's topic), on each phone that
-  user publishes to. A family member's user is shared across the phones
-  they help, and one owner publisher may serve several phones, so that can
-  be more than one phone. Worst case is apps opening and the phones
-  ringing at full alarm volume, repeatedly, until the owner flips a STOP
-  switch; the per-channel rate limits (at most 3 `ring find` and 10
-  launches per 10 minutes) bound how often. This bound assumes the token's
-  user holds only these grants: a publisher that shares a user with other
-  grants exposes them too, and revoking it cuts those off as well
+- A leaked publisher token can only fire registry commands on the channels
+  its user holds grants for: one channel per phone (the owner channel, or
+  that member's topic), on each phone that user publishes to. It can also
+  read every receipt on each of those phones, all channels' (there is one
+  ack topic per phone, §6), including `status report` and the STOP states
+  it shows. A family member's user is shared across the phones they help,
+  and one owner publisher may serve several phones, so that can be more
+  than one phone. Worst case is apps opening and the phones ringing at
+  full alarm volume, repeatedly, until the owner flips a STOP switch (on
+  the owner channel, also `launch rustdesk` without the confirm tap); the
+  per-channel rate limits (at most 3 `ring find` and 10 launches per 10
+  minutes) bound how often. This bound assumes the token's user holds only
+  these grants: a publisher that shares a user with other grants exposes
+  them too, and revoking it cuts those off as well
   (`server/ntfy-provisioning.md` recommends a dedicated user).
-- Revocation: rotate that token or remove that user, which cuts it off on
-  every phone; other publishers are unaffected. To cut off one family
-  member, `deny` their user on their topic and on the ack topic on every
-  phone they help (or remove the user); to take them off one phone only,
-  do that for that phone and keep the user. A `deny` refuses new
+- Revocation: rotate that token (and change that user's password, if it
+  has one in use) or remove that user, which cuts it off on every phone;
+  other publishers are unaffected. To cut off one phone only, `deny` the
+  user on that phone's topics: for an owner publisher, the owner topic and
+  the ack topic; for a family member, their topic and the ack topic (and,
+  to take them off that phone for good, remove the member there first:
+  `server/ntfy-provisioning.md`, "Removing a member"). A leaked family
+  credential needs that `deny` on every phone they help, or the user
+  removed. A `deny`, a rotated token and a removed user all refuse new
   publishes and reads at once, but a subscription already open keeps
-  receiving until it disconnects, even after the user is removed; only a
-  server restart ends it (`server/ntfy-provisioning.md`, "What a
-  revocation stops, and when").
+  receiving until it disconnects; a server restart ends it at once
+  (`server/ntfy-provisioning.md`, "What a revocation stops, and when").
 - Credentials live with the publishers (agent secret storage, family
   members' password managers). The phone's owner never handles, sees, or
   types a credential for the owner channel.
@@ -389,8 +395,9 @@ Open is the exception, §5d). Re-enabling is likewise the owner's act alone.
 ## 8. Threat model (summary)
 
 In scope: leaked publisher token (bounded to whitelist mischief on the
-channels its user holds grants for, one per phone, when it holds no other
-grants, §3; revocable, though an open subscription outlasts a `deny`);
+channels its user holds grants for, one per phone, plus reading those
+phones' receipts, when it holds no other grants, §3; revocable, though an
+open subscription outlasts the revocation until it disconnects);
 lost phone credential (read-only exposure); a malicious or malformed message
 on a command topic (registry match rejects it); stale/redelivered commands
 (TTL + dedup).
