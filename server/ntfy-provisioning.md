@@ -45,8 +45,13 @@ keeps working for the other phones.
 requests at once: the next publish gets 403 (F1 below), and so does the next
 read or new subscription. A subscription that is already open is not cut:
 it keeps receiving that topic (here, the phone's receipts on the ack topic)
-until it disconnects, even after the user is removed. To end it at once,
-restart the ntfy server after the `deny`; the reconnect is then refused.
+until it disconnects, even after its token or the user is removed, and its
+holder can keep it open indefinitely. To end it at once, restart the ntfy
+server after the `deny`; the reconnect is then refused. A restart has a
+cost: every subscriber on the server reconnects (every phone's owner and
+family channels included), a publish during the gap is refused and has to be
+sent again, and cached messages survive only if the server has a cache file.
+So restart for a leaked credential; for a planned removal it's optional.
 Checked on ntfy v2.11.0 (a test container, 2026-11-17); re-check after a
 server upgrade, and with any ACL cache option the server has turned on.
 
@@ -159,13 +164,20 @@ members' topics and the owner channel still work after the `deny`:
 4. Cleanup: drill user removed entirely, token file deleted, user list
    verified clean; publish attempt afterwards → **401**.
 
-Standing revocation procedure for a real family member: apply `deny` on
-their member topic and on the ack topic first (their commands stop at once),
-restart the ntfy server if they may hold an open subscription to the ack
-topic, then revoke their tokens / remove the user at leisure. Test-plan F1
-is satisfied for the ACL mechanism's refusal of publishes; it will be re-run
-with the real family credentials, with the ack-read checks TEST-PLAN F1 now
-lists, during Phase 4 provisioning.
+Standing revocation procedure for a real family member. Their ntfy user is
+shared across every phone they help, so a `deny` on one phone's topics
+leaves the others open.
+- **Leaked credential:** deny the user on every member topic and ack topic it
+  holds, on every phone (`ntfy access <user>` lists them), or remove the user
+  at once; then restart the ntfy server to end any open subscription
+  ("What a revocation stops" above). Their commands are refused from the
+  `deny` on.
+- **Removing them from one phone only:** follow "Removing a member" above
+  for that phone, and keep the user and token for the others.
+
+Test-plan F1 is satisfied for the ACL mechanism's refusal of publishes; it
+will be re-run with the real family credentials, with the ack-read checks
+TEST-PLAN F1 now lists, during Phase 4 provisioning.
 
 ## F2 phone-credential scope (2026-11-11, PASSED via the public path)
 
