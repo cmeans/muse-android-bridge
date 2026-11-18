@@ -1,13 +1,13 @@
 name: PR Behind Main
 
-# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
-# mcp-phone-commands #N, not this repo's.
+# Ported from a sibling project, mcp-phone-commands (not public): a bare #N in this
+# file is that project's #N, not this repo's.
 
 # Labels open PRs whose branch is behind main (`Behind main`) or that can no
 # longer merge cleanly (`Merge conflict`: merge main into the branch, never rebase)
 # (mcp-synology #273). This repo's ruleset doesn't require up-to-date branches
-# (2026-11-15), so `Behind main` is advice here (claude-dev's handoff step 6 still has Dev update
-# such a PR before merging, since its CI ran on an older main). It doesn't hold
+# (2026-11-15), so `Behind main` is advice here (a PR is still brought up to date
+# with main before merging, since its CI ran on an older main). It doesn't hold
 # up QA: a review stays valid across a clean merge of main. `Merge conflict` does: resolving
 # it changes the diff, so this removes `Ready for QA` when it adds the label (and
 # pr-labels-ci.yml / pr-labels.yml don't promote while it's there). Fixing the

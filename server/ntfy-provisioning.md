@@ -30,7 +30,7 @@ Credential values live only in a root-only file on the server (0600) as
 on its host. Revoking that token then cuts off the owner channel and nothing
 else. The reference deployment doesn't do this yet: its publisher uses an
 existing ntfy user that holds other grants too, with the grants above added
-to them (grants attach to the user, so its existing token picked them up).
+to it (grants attach to the user, so its existing token picked them up).
 The checks below hold either way, as long as that user isn't an ntfy admin:
 the admin role ignores grants, so an admin publisher could read the owner
 topic, and the second check would catch it.
