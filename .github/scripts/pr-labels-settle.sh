@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
-# mcp-phone-commands #N, not this repo's.
+# Ported from a sibling project, mcp-phone-commands (not public): a bare #N in this
+# file is that project's #N, not this repo's.
 # Settles a PR's labels from its head commit's checks: Ready for QA once CI has passed, with
 # CodeQL's check if the commit has one, CI Failed once CI has a failed job or CodeQL has failed,
 # when this next reads them, nothing while a result is missing. Used by pr-labels-ci.yml on each

@@ -9,8 +9,7 @@ topic (§9); the maintainer approved the approach on 2026-11-15.
 
 0.4 adds the command's message id
 to every receipt (§6), so a publisher can match each receipt to its
-command exactly; the maintainer decided it on 2026-11-13 (mcp-phone-commands
-design Q1), reversing 0.3's no-ids rule; and the phone's clock to `status
+command exactly; the maintainer decided it on 2026-11-13, reversing 0.3's no-ids rule; and the phone's clock to `status
 report` (`time=`, maintainer, 2026-11-14). 0.3 adds the `cannot-launch`,
 `blocked` and `rate-limited` receipts (§6), per-channel rate limits
 (§3, §5), a cap on `dropped-stale` receipts for a replayed backlog
@@ -140,16 +139,18 @@ Rules:
 - The phone's credential is read-mostly by design: stealing it lets an
   attacker *watch* commands and *forge receipts*, never issue commands.
 - A leaked publisher token can only fire registry commands on one channel of
-  one phone (for a family member, on that member's topic). Worst case is apps opening and the phone ringing at full alarm
-  volume, repeatedly, until the owner flips a STOP switch; the per-channel
-  rate limits (at most 3 `ring find` and 10 launches per 10 minutes) bound
-  how often. Revocation = rotate that token / disable that user; the other
-  channels are unaffected. This bound assumes the token's user holds only
-  these grants: a publisher that shares a user with other grants exposes
-  them too, and revoking it cuts those off as well
-  (`server/ntfy-provisioning.md` recommends a dedicated user). To cut off one family member, `deny` their user on
-  their topic (and on the ack topic), and rotate their token or remove the
-  user; the owner channel and every other member are unaffected.
+  one phone (for a family member, on that member's topic). Worst case is
+  apps opening and the phone ringing at full alarm volume, repeatedly,
+  until the owner flips a STOP switch; the per-channel rate limits (at most
+  3 `ring find` and 10 launches per 10 minutes) bound how often.
+  Revocation = rotate that token / disable that user; the other channels
+  are unaffected. This bound assumes the token's user holds only these
+  grants: a publisher that shares a user with other grants exposes them
+  too, and revoking it cuts those off as well
+  (`server/ntfy-provisioning.md` recommends a dedicated user). To cut off
+  one family member, `deny` their user on their topic (and on the ack
+  topic), and rotate their token or remove the user; the owner channel and
+  every other member are unaffected.
 - Credentials live with the publishers (agent secret storage, family
   members' password managers). The phone's owner never handles, sees, or
   types a credential for the owner channel.
@@ -378,7 +379,8 @@ Open is the exception, §5d). Re-enabling is likewise the owner's act alone.
 
 ## 8. Threat model (summary)
 
-In scope: leaked publisher token (bounded to whitelist mischief, revocable);
+In scope: leaked publisher token (bounded to whitelist mischief when its
+user holds only its channel's grants, §3; revocable);
 lost phone credential (read-only exposure); a malicious or malformed message
 on a command topic (registry match rejects it); stale/redelivered commands
 (TTL + dedup).

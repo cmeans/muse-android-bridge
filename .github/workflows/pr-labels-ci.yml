@@ -1,7 +1,7 @@
 name: PR Label Automation (CI)
 
-# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
-# mcp-phone-commands #N, not this repo's.
+# Ported from a sibling project, mcp-phone-commands (not public): a bare #N in this
+# file is that project's #N, not this repo's.
 
 # Handles label transitions when a PR's checks finish (pass or fail).
 # Split from pr-labels.yml because workflow_run fires on every CI
