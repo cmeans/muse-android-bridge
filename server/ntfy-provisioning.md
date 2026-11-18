@@ -34,10 +34,13 @@ owner topic (the second check below would catch it).
 
 One `owner-pub` can serve several phones: it then holds these two grants on
 each phone's owner and ack topics and no others, and revoking its token cuts
-off the owner channel on all of them. To cut off one phone only, deny it that
-phone's owner topic (`ntfy access owner-pub mab-<device>-owner deny`, or
-`--reset`): the ACL denial is immediate (F1 below), and the token keeps working
-for the other phones.
+off the owner channel on all of them. To cut off one phone only, deny it both
+of that phone's topics, the owner topic and the ack topic (where it reads the
+phone's receipts and status reports):
+`ntfy access owner-pub mab-<device>-owner deny` and
+`ntfy access owner-pub mab-<device>-ack deny` (or `--reset` each). The ACL
+denial is immediate (F1 below), and the token keeps working for the other
+phones.
 
 How the reference deployment got there (it has two provisioned phones; only
 `pilot-phone`'s topics are written up here):
@@ -93,9 +96,12 @@ ntfy user `fam-m1`. Every grant names the exact topic, never a wildcard:
    reads the new topic → 200.
 
 **Removing a member: phone first.** Remove the member in the phone's setup,
-then revoke the grants (`ntfy access fam-m1 mab-pilot-phone-family-m1 deny`,
-or `ntfy access --reset fam-m1 mab-pilot-phone-family-m1`, and the phone
-user's read with `ntfy access --reset <phone-user> <member-topic>`).
+then revoke the grants: the member's write on their topic
+(`ntfy access fam-m1 mab-pilot-phone-family-m1 deny`, or
+`ntfy access --reset fam-m1 mab-pilot-phone-family-m1`), the member's read on
+this phone's ack topic (`ntfy access --reset fam-m1 mab-pilot-phone-ack`, or
+`deny`; otherwise they keep reading this phone's receipts), and the phone
+user's read with `ntfy access --reset <phone-user> <member-topic>`.
 Revoking the phone's read first would leave that member shown
 on the phone as unreachable until it's removed.
 

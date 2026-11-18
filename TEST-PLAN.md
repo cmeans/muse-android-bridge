@@ -66,6 +66,6 @@ touched until every Phase 1–3 item that bears on it has a recorded result.
 
 | # | Unknown | Test | Pass looks like |
 |---|---|---|---|
-| F1 | Leaked family token | Per member (protocol 0.5): `deny` that member's user on their topic, rotate/disable the credential; fire old-credential commands | All refused; owner channel and every other member unaffected; procedure timed |
+| F1 | Leaked family token | Per member (protocol 0.5): `deny` that member's user on their topic (and on the ack topic), rotate/disable the credential; fire old-credential commands | All refused; owner channel and every other member unaffected; procedure timed |
 | F2 | Phone credential theft simulation | Use the phone's read-mostly credential from another client | Can read topics/forge receipts only; cannot issue a command |
 | F3 | Rogue controller attempt | Connect from a non-whitelisted RustDesk ID with the correct device password | Refused at whitelist, before password matters |
