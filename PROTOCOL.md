@@ -9,8 +9,9 @@ topic (§9); the maintainer approved the approach on 2026-11-15.
 
 0.4 adds the command's message id
 to every receipt (§6), so a publisher can match each receipt to its
-command exactly; the maintainer decided it on 2026-11-13, reversing 0.3's no-ids rule; and the phone's clock to `status
-report` (`time=`, maintainer, 2026-11-14). 0.3 adds the `cannot-launch`,
+command exactly; the maintainer decided it on 2026-11-13, reversing 0.3's
+no-ids rule; and the phone's clock to `status report` (`time=`,
+maintainer, 2026-11-14). 0.3 adds the `cannot-launch`,
 `blocked` and `rate-limited` receipts (§6), per-channel rate limits
 (§3, §5), a cap on `dropped-stale` receipts for a replayed backlog
 (§6), and `launch-check` in `status report`; the maintainer decided the
@@ -146,11 +147,10 @@ Rules:
   Revocation = rotate that token / disable that user; the other channels
   are unaffected. This bound assumes the token's user holds only these
   grants: a publisher that shares a user with other grants exposes them
-  too, and revoking it cuts those off as well
-  (`server/ntfy-provisioning.md` recommends a dedicated user). To cut off
-  one family member, `deny` their user on their topic (and on the ack
-  topic), and rotate their token or remove the user; the owner channel and
-  every other member are unaffected.
+  too, and revoking it cuts those off as well (`server/ntfy-provisioning.md`
+  recommends a dedicated user). To cut off one family member, `deny` their
+  user on their topic (and on the ack topic), and rotate their token or
+  remove the user; the owner channel and every other member are unaffected.
 - Credentials live with the publishers (agent secret storage, family
   members' password managers). The phone's owner never handles, sees, or
   types a credential for the owner channel.

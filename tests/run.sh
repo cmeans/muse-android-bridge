@@ -3,8 +3,8 @@
 # Ported from a sibling project, mcp-phone-commands (not public; its #3), without its
 # docs-checker suite. Needs bash, jq and yq (mikefarah's, as GitHub's ubuntu-latest has). CI
 # runs this on ubuntu-latest so the workflow scripts are tested on the jq they run on there,
-# whatever version that is (it's printed below): a bug in that project (its #9) passed on a local jq 1.8 and broke on
-# the runner's jq 1.7 of the time, which binds `as` differently.
+# whatever version that is (it's printed below): a bug in that project (its #9) passed on a
+# local jq 1.8 and broke on the runner's jq 1.7 of the time, which binds `as` differently.
 set -u
 cd "$(dirname "$0")/.."
 echo "bash ${BASH_VERSION}; $(jq --version); $(yq --version 2>&1 | head -n 1)"

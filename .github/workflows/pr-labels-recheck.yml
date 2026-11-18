@@ -12,9 +12,10 @@ name: PR Label Recheck
 # after merge. GitHub can delay a scheduled run.
 on:
   schedule:
-    # Hourly, as in the sibling project. It ran every 4 hours while this repo was private,
-    # to save Actions minutes; a public repo's runs on GitHub-hosted runners use none.
-    - cron: "17 * * * *"
+    # Every 15 minutes, as in mcp-synology. It ran every 4 hours while this repo was
+    # private, to save Actions minutes; a public repo's runs on standard GitHub-hosted
+    # runners use none.
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 # No token permissions by default; the job asks only for what it uses (mcp-synology #203).
