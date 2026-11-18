@@ -27,16 +27,19 @@ Credential values live only in a root-only file on the server (0600) as
 
 **Recommended, and what the reference deployment does now:** give the owner
 channel's publisher a dedicated ntfy user (`owner-pub` above) with only these
-grants, and its own token in a 0600 file on its host. Revoking that token then
-cuts off the owner channel and nothing else. Make it a plain user, not an ntfy
-admin: the admin role ignores grants, so an admin publisher could read the
-owner topic (the second check below would catch it).
+grants, and its own token in a 0600 file on its host. Revoking that token (and
+changing the user's password, if one is in use: `ntfy user add` always sets
+one, and it keeps working after the token is removed) then cuts off the owner
+channel and nothing else. Make it a plain user, not an ntfy admin: the admin
+role ignores grants, so an admin publisher could read the owner topic (the
+second check below would catch it).
 
 One `owner-pub` can serve several phones: it then holds these two grants on
-each phone's owner and ack topics and no others, and revoking its token cuts
-off the owner channel on all of them. To cut off one phone only, deny it both
-of that phone's topics, the owner topic and the ack topic (where it reads the
-phone's receipts and status reports):
+each phone's owner and ack topics and no others, and revoking its token (and
+changing its password, as above) cuts off the owner channel on all of them.
+To cut off one phone only, deny it both of that phone's topics, the owner
+topic and the ack topic (where it reads the phone's receipts and status
+reports):
 `ntfy access owner-pub mab-<device>-owner deny` and
 `ntfy access owner-pub mab-<device>-ack deny` (or `--reset` each). The token
 keeps working for the other phones.
