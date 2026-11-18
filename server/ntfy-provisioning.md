@@ -19,21 +19,34 @@ needed or performed — user/ACL changes are live database operations.
 | Principal | mab-pilot-phone-owner | mab-pilot-phone-family | mab-pilot-phone-ack |
 |---|---|---|---|
 | `pilot-phone-phone` (user, on-phone credential; `<device>-phone` per PROTOCOL §3) | read-only | read-only | write-only |
-| `owner-pub` (the owner channel's publisher: the owner's agent; a dedicated user is recommended, see below) | write-only | — | read-only |
+| `owner-pub` (the owner channel's publisher: the owner's agent; a dedicated user, see below) | write-only | — | read-only |
 | `admin` (admin) | full (admin role) | full | full |
 
 Credential values live only in a root-only file on the server (0600) as
 `PILOT_PHONE_USER` / `PILOT_PHONE_PASSWORD`.
 
-**Recommended:** give the owner channel's publisher a dedicated ntfy user
-(`owner-pub` above) with only these grants, and its own token in a 0600 file
-on its host. Revoking that token then cuts off the owner channel and nothing
-else. The reference deployment doesn't do this yet: its publisher uses an
-existing ntfy user that holds other grants too, with the grants above added
-to them (grants attach to the user, so its existing token picked them up).
-The checks below hold either way, as long as that user isn't an ntfy admin:
-the admin role ignores grants, so an admin publisher could read the owner
-topic, and the second check would catch it.
+**Recommended, and what the reference deployment does now:** give the owner
+channel's publisher a dedicated ntfy user (`owner-pub` above) with only these
+grants, and its own token in a 0600 file on its host. Revoking that token then
+cuts off the owner channel and nothing else. Make it a plain user, not an ntfy
+admin: the admin role ignores grants, so an admin publisher could read the
+owner topic (the second check below would catch it).
+
+One `owner-pub` can serve several phones: it then holds these two grants on
+each phone's owner and ack topics and no others, and revoking it cuts off the
+owner channel on all of them.
+
+How the reference deployment got there:
+- **2026-11-11:** the publisher was an existing ntfy user that held other
+  grants too, with the grants above added to it.
+- **2026-11-14:** after an audit, each phone's owner channel got its own
+  dedicated publisher user.
+- **2026-11-17:** those were replaced by one dedicated, non-admin `owner-pub`
+  for every phone. The per-phone publisher users now hold no grants, and the
+  existing user lost all its bridge entries (its ack-topic reads and explicit
+  no-access entries on the owner topics); it holds only grants unrelated to
+  the bridge. No wildcard grant was used at
+  any step.
 
 ## Verification (2026-11-11, all as expected)
 
@@ -45,6 +58,11 @@ topic, and the second check would catch it.
 - phone user publishes receipt to ack → 200; reads ack → 403
 - phone user reads family topic → 200; reads a topic it has no grant on → 403
 - publisher token reads ack topic → receives `ok launch meet`
+
+Re-checked on 2026-11-17 with the dedicated `owner-pub` token, on every
+phone's topics: publish to the owner topic → 200, stored; read the owner
+topic → 403; read the ack topic → works. The replaced per-phone publisher
+tokens now get 403 on publish.
 
 ## Family members (protocol 0.5)
 
