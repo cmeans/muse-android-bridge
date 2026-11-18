@@ -27,16 +27,21 @@ Credential values live only in a root-only file on the server (0600) as
 
 **Recommended, and what the reference deployment does now:** give the owner
 channel's publisher a dedicated ntfy user (`owner-pub` above) with only these
-grants, and its own token in a 0600 file on its host. Revoking that token then
-cuts off the owner channel and nothing else. Make it a plain user, not an ntfy
-admin: the admin role ignores grants, so an admin publisher could read the
-owner topic (the second check below would catch it).
+grants, and its own token in a 0600 file on its host. Revoking that token and
+changing the user's password then cuts off the owner channel and nothing
+else: `ntfy token remove owner-pub <token>` (`ntfy token list owner-pub`
+shows it) and `ntfy user change-pass owner-pub`. Both are needed: `ntfy user
+add` always sets a password, which keeps working after the token is removed,
+and a password change leaves the token working. Make it a plain user, not an
+ntfy admin: the admin role ignores grants, so an admin publisher could read
+the owner topic (the second check below would catch it).
 
 One `owner-pub` can serve several phones: it then holds these two grants on
-each phone's owner and ack topics and no others, and revoking its token cuts
-off the owner channel on all of them. To cut off one phone only, deny it both
-of that phone's topics, the owner topic and the ack topic (where it reads the
-phone's receipts and status reports):
+each phone's owner and ack topics and no others, and revoking its token and
+changing its password (as above) cuts off the owner channel on all of them.
+To cut off one phone only, deny it both of that phone's topics, the owner
+topic and the ack topic (where it reads the phone's receipts and status
+reports):
 `ntfy access owner-pub mab-<device>-owner deny` and
 `ntfy access owner-pub mab-<device>-ack deny` (or `--reset` each). The token
 keeps working for the other phones.
@@ -45,9 +50,11 @@ keeps working for the other phones.
 requests at once: the next publish gets 403 (F1 below), and so does the next
 read or new subscription. A subscription that is already open is not cut:
 it keeps receiving that topic (here, the phone's receipts on the ack topic)
-until it disconnects, even after its token or the user is removed, and its
-holder can keep it open indefinitely. To end it at once, restart the ntfy
-server after the `deny`; the reconnect is then refused. A restart has a
+until it disconnects, even after its token is removed, its password is
+changed or the user is removed, and its holder can keep it open
+indefinitely. To end it at once, restart the ntfy server after any of these
+(a `deny`, a removed token, a changed password, a removed user); the
+reconnect is then refused. A restart has a
 cost: every subscriber on the server reconnects (every phone's owner and
 family channels included), a publish during the gap is refused and has to be
 sent again, and cached messages survive only if the server has a cache file.
