@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Ported from mcp-phone-commands (its main at 524646e): a bare #N in this file is
-# mcp-phone-commands #N, not this repo's.
+# Ported from a sibling project, mcp-phone-commands (not public): a bare #N in this
+# file is that project's #N, not this repo's.
 # qa-gate.yml: the QA Gate status from the labels (#2, #4, #6, #8) and from when the approvals
 # came relative to the head commit (#7, #9). Run by tests/run.sh.
 set -u
