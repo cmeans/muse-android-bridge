@@ -52,8 +52,9 @@ read or new subscription. A subscription that is already open is not cut:
 it keeps receiving that topic (here, the phone's receipts on the ack topic)
 until it disconnects, even after its token is removed, its password is
 changed or the user is removed, and its holder can keep it open
-indefinitely. To end it at once, restart the ntfy
-server after the `deny`; the reconnect is then refused. A restart has a
+indefinitely. To end it at once, restart the ntfy server after any of these
+(a `deny`, a removed token, a changed password, a removed user); the
+reconnect is then refused. A restart has a
 cost: every subscriber on the server reconnects (every phone's owner and
 family channels included), a publish during the gap is refused and has to be
 sent again, and cached messages survive only if the server has a cache file.
