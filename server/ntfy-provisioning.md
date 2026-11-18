@@ -27,39 +27,48 @@ Credential values live only in a root-only file on the server (0600) as
 
 **Recommended, and what the reference deployment does now:** give the owner
 channel's publisher a dedicated ntfy user (`owner-pub` above) with only these
-grants, and its own token in a 0600 file on its host. Revoking that token and
-changing the user's password then cuts off the owner channel and nothing
-else: `ntfy token remove owner-pub <token>` (`ntfy token list owner-pub`
-shows it) and `ntfy user change-pass owner-pub`. Both are needed: `ntfy user
-add` always sets a password, which keeps working after the token is removed,
-and a password change leaves the token working. Make it a plain user, not an
-ntfy admin: the admin role ignores grants, so an admin publisher could read
-the owner topic (the second check below would catch it).
+grants, and its own token in a 0600 file on its host. Deleting that user
+then cuts off the owner channel and nothing else ("What a revocation stops",
+below, says how). Make it a plain user, not an ntfy admin: the admin role
+ignores grants, so an admin publisher could read the owner topic (the second
+check below would catch it).
 
 One `owner-pub` can serve several phones: it then holds these two grants on
-each phone's owner and ack topics and no others, and revoking its token and
-changing its password (as above) cuts off the owner channel on all of them.
-To cut off one phone only, deny it both of that phone's topics, the owner
-topic and the ack topic (where it reads the phone's receipts and status
-reports):
+each phone's owner and ack topics and no others, and deleting it cuts off the
+owner channel on all of them. To cut off one phone only, deny it both of that
+phone's topics, the owner topic and the ack topic (where it reads the phone's
+receipts and status reports):
 `ntfy access owner-pub mab-<device>-owner deny` and
-`ntfy access owner-pub mab-<device>-ack deny` (or `--reset` each). The token
+`ntfy access owner-pub mab-<device>-ack deny` (or `--reset` each). The user
 keeps working for the other phones.
 
-**What a revocation stops, and when.** A `deny` or `--reset` refuses new
-requests at once: the next publish gets 403 (F1 below), and so does the next
-read or new subscription. A subscription that is already open is not cut:
-it keeps receiving that topic (here, the phone's receipts on the ack topic)
-until it disconnects, even after its token is removed, its password is
-changed or the user is removed, and its holder can keep it open
-indefinitely. To end it at once, restart the ntfy server after any of these
-(a `deny`, a removed token, a changed password, a removed user); the
-reconnect is then refused. A restart has a
-cost: every subscriber on the server reconnects (every phone's owner and
-family channels included), a publish during the gap is refused and has to be
-sent again, and cached messages survive only if the server has a cache file.
-So restart for a leaked credential; for a planned removal it's optional.
-Checked on ntfy v2.11.0 (a test container, 2026-11-17); re-check after a
+**What a revocation stops, and when.** This is the one place the other
+sections and PROTOCOL §3 point to. Grants and tokens belong to the ntfy user,
+not to one credential:
+- **`ntfy access <user> <topic> deny`** (or `--reset`) refuses that user on
+  that topic, for every credential it has: its password, its tokens, and any
+  token minted from them. The next publish gets 403 (F1 below), and so does
+  the next read or new subscription.
+- **`ntfy user del <user>`** removes its password, every token (minted ones
+  included) and its grants at once: the next request gets 401. To restore
+  access, re-create the user (`ntfy user add`), its grants and a new token.
+- **Removing a token or changing the password is not a revocation.** Any
+  credential of the user can mint more tokens (`POST /v1/account/token`,
+  never-expiring if asked), and a token minted before the removal keeps
+  working: one minted from a leaked token still published (200) after that
+  token was removed and the password changed. Do these only after one of the
+  two moves above.
+- **None of these cuts a subscription that is already open.** It keeps
+  receiving that topic (here, the phone's receipts on the ack topic) until it
+  disconnects, and its holder can keep it open indefinitely. To end it at
+  once, restart the ntfy server after the `deny` or the `user del`; the
+  reconnect is then refused. A restart has a cost: every subscriber on the
+  server reconnects (every phone's owner and family channels included), a
+  publish during the gap is refused and has to be sent again, and cached
+  messages survive only if the server has a cache file. So restart for a
+  leaked credential; for a planned removal it's optional.
+
+Checked on ntfy v2.11.0 (test containers, 2026-11-17); re-check after a
 server upgrade, and with any ACL cache option the server has turned on.
 
 How the reference deployment got there (it has two provisioned phones; only
@@ -120,10 +129,9 @@ then revoke the grants: the member's write on their topic
 (`ntfy access fam-m1 mab-pilot-phone-family-m1 deny`, or
 `ntfy access --reset fam-m1 mab-pilot-phone-family-m1`), the member's read on
 this phone's ack topic (`ntfy access --reset fam-m1 mab-pilot-phone-ack`, or
-`deny`; otherwise they keep reading this phone's receipts, and an open
-subscription keeps them until it disconnects: see "What a revocation stops"
-above), and the phone user's read with
-`ntfy access --reset <phone-user> <member-topic>`.
+`deny`; otherwise they keep reading this phone's receipts), and the phone
+user's read with `ntfy access --reset <phone-user> <member-topic>`. "What a
+revocation stops" above says what these do and don't cut.
 Revoking the phone's read first would leave that member shown
 on the phone as unreachable until it's removed.
 
@@ -175,12 +183,12 @@ Standing revocation procedure for a real family member. Their ntfy user is
 shared across every phone they help, so a `deny` on one phone's topics
 leaves the others open.
 - **Leaked credential:** deny the user on every member topic and ack topic it
-  holds, on every phone (`ntfy access <user>` lists them), or remove the user
-  at once; then restart the ntfy server to end any open subscription
-  ("What a revocation stops" above). Their commands are refused from the
-  `deny` on.
+  holds, on every phone (`ntfy access <user>` lists them), or delete the user
+  (`ntfy user del`) and re-create it for the phones they still help; then
+  restart the ntfy server. Removing their token or changing their password
+  isn't enough. "What a revocation stops" above says why.
 - **Removing them from one phone only:** follow "Removing a member" above
-  for that phone, and keep the user and token for the others.
+  for that phone, and keep the user for the others.
 
 Test-plan F1 is satisfied for the ACL mechanism's refusal of publishes; it
 will be re-run with the real family credentials, with the ack-read checks
