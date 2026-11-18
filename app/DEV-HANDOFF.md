@@ -35,8 +35,9 @@ the separate Phase 3 design is approved.
   pilot phone and were verified end to end (`pilot-phone` is the docs'
   example name, as in `server/ntfy-provisioning.md`; the live server uses
   its own).
-- Security drills F1 (publisher revocation) and F2 (phone credential
-  scope) passed.
+- Security drill F2 (phone credential scope) passed, and F1's ACL-refusal
+  part; F1's full revocation drill (by deleting the user) is pending for
+  Phase 4.
 - The Tasker probe received real commands on both channels and resolved
   the topic/message data. It also demonstrated the server-cache replay
   on subscribe, which is why TTL and dedup are mandatory.

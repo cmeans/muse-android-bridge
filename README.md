@@ -48,8 +48,9 @@ the code.
 
 Phase 1 in progress (2026-11-11). Design documents complete; the pilot
 device's ntfy principals are provisioned and verified on the self-hosted
-server, and security drills F1 (publisher revocation) and F2 (phone
-credential scope) have passed — see `server/ntfy-provisioning.md`.
+server. Security drill F2 (phone credential scope) has passed, and F1's
+ACL-refusal part (publisher revocation); F1's full revocation drill, by
+deleting the user, is pending for Phase 4 — see `server/ntfy-provisioning.md`.
 The Tasker pilot validated the wire protocol end to end on the pilot
 phone (test group A1 confirmed live).
 

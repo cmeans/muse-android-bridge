@@ -47,11 +47,11 @@ sections and PROTOCOL §3 point to. Grants and tokens belong to the ntfy user,
 not to one credential:
 - **`ntfy access <user> <topic> deny`** (or `--reset`) refuses that user on
   that topic, for every credential it has: its password, its tokens, and any
-  token minted from them. The next publish gets 403 (F1 below), and so does
-  the next read or new subscription. Its tokens stay valid, though: they can
-  still mint more, and any later grant to the user (helping a new phone, say)
-  works for them again. So a `deny` is for cutting a trusted user off one
-  phone; for a leaked credential, delete the user.
+  token minted from them. The next publish gets 403 (the ACL refusal drill
+  below), and so does the next read or new subscription. Its tokens stay
+  valid, though: they can still mint more, and any later grant to the user
+  (helping a new phone, say) works for them again. So a `deny` is for cutting
+  a trusted user off one phone; for a leaked credential, delete the user.
 - **`ntfy user del <user>`** removes its password, every token (minted ones
   included) and its grants at once: the next request gets 401. To restore
   access, re-create the user (`ntfy user add`), its grants and a new token;
@@ -155,8 +155,7 @@ and revoking before a family user's member topic is granted and added would
 cut that person off. Afterwards a message sent to
 the shared topic reaches nobody and gets no receipt.
 
-Then re-run the F1 drill below (the ACL refusal) per member, on that member's
-topic.
+Then re-run the ACL refusal drill below per member, on that member's topic.
 
 ## Still to provision at later phases
 
@@ -169,17 +168,17 @@ topic.
   https://ntfy.example.com — password handed over at setup time, never
   written here.
 
-## F1 revocation drill (2026-11-11, PASSED; per member under protocol 0.5)
+## ACL refusal drill (2026-11-11, PASSED; part of F1)
 
 Throwaway publisher `drill-pub` (write-only on `mab-pilot-phone-family`,
 own token), run entirely against the pilot topics. The drill was run on the
 shared topic. It checks the ACL refusal only: that a `deny` stops a user's
 commands at once. It is not the revocation for a leaked credential, which is
-`user del` ("What a revocation stops" above); TEST-PLAN F1 is that drill,
-run per member under 0.5. To re-check the refusal under 0.5, use the member's
-topic in place of the shared one (`mab-pilot-phone-family-m1`), and check
-that the other members' topics and the owner channel still work after the
-`deny`:
+`user del` ("What a revocation stops" above); TEST-PLAN F1 drills that
+revocation, per member under 0.5. To re-check the refusal under 0.5, use the
+member's topic in place of the shared one (`mab-pilot-phone-family-m1`), and
+check that the other members' topics and the owner channel still work after
+the `deny`:
 
 1. Publish with drill token → **200**.
 2. `ntfy access drill-pub mab-pilot-phone-family deny` (the ACL refusal;
@@ -203,9 +202,10 @@ leaves the others open.
 - **Removing them from one phone only:** follow "Removing a member" above
   for that phone, and keep the user for the others.
 
-Test-plan F1 is satisfied for the ACL mechanism's refusal of publishes; it
-will be re-run with the real family credentials, with the ack-read checks
-TEST-PLAN F1 now lists, during Phase 4 provisioning.
+TEST-PLAN F1 is not yet satisfied: the 2026-11-11 drill above covered only
+the ACL refusal. F1 itself (a minted token, `user del`, the restart and a
+re-grant) runs per member with the real family credentials during Phase 4
+provisioning.
 
 ## F2 phone-credential scope (2026-11-11, PASSED via the public path)
 
@@ -214,5 +214,5 @@ Re-ran the phone credential's scope checks through the public front door
 will use), not just localhost: read owner topic → message received;
 publish to owner → 403; publish ack receipt → 200; read ack → 403.
 Combined with provisioning-day localhost checks (an ungranted topic → 403) and
-the F1 drill, test-plan F2 is satisfied. F3 (rogue controller refused)
+the ACL refusal drill, test-plan F2 is satisfied. F3 (rogue controller refused)
 awaits the Phase 3 RustDesk server.
