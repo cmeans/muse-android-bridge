@@ -38,9 +38,17 @@ off the owner channel on all of them. To cut off one phone only, deny it both
 of that phone's topics, the owner topic and the ack topic (where it reads the
 phone's receipts and status reports):
 `ntfy access owner-pub mab-<device>-owner deny` and
-`ntfy access owner-pub mab-<device>-ack deny` (or `--reset` each). The ACL
-denial is immediate (F1 below), and the token keeps working for the other
-phones.
+`ntfy access owner-pub mab-<device>-ack deny` (or `--reset` each). The token
+keeps working for the other phones.
+
+**What a revocation stops, and when.** A `deny` or `--reset` refuses new
+requests at once: the next publish gets 403 (F1 below), and so does the next
+read or new subscription. A subscription that is already open is not cut:
+it keeps receiving that topic (here, the phone's receipts on the ack topic)
+until it disconnects, even after the user is removed. To end it at once,
+restart the ntfy server after the `deny`; the reconnect is then refused.
+Checked on ntfy v2.11.0 (a test container, 2026-11-17); re-check after a
+server upgrade, and with any ACL cache option the server has turned on.
 
 How the reference deployment got there (it has two provisioned phones; only
 `pilot-phone`'s topics are written up here):
@@ -100,8 +108,10 @@ then revoke the grants: the member's write on their topic
 (`ntfy access fam-m1 mab-pilot-phone-family-m1 deny`, or
 `ntfy access --reset fam-m1 mab-pilot-phone-family-m1`), the member's read on
 this phone's ack topic (`ntfy access --reset fam-m1 mab-pilot-phone-ack`, or
-`deny`; otherwise they keep reading this phone's receipts), and the phone
-user's read with `ntfy access --reset <phone-user> <member-topic>`.
+`deny`; otherwise they keep reading this phone's receipts, and an open
+subscription keeps them until it disconnects: see "What a revocation stops"
+above), and the phone user's read with
+`ntfy access --reset <phone-user> <member-topic>`.
 Revoking the phone's read first would leave that member shown
 on the phone as unreachable until it's removed.
 
@@ -142,16 +152,20 @@ members' topics and the owner channel still work after the `deny`:
 2. `ntfy access drill-pub mab-pilot-phone-family deny` (the revocation move;
    under 0.5, on the member's topic).
 3. Publish again with the **same, still-valid token** → **403**. ACL denial
-   is immediate and beats token validity — revoking a family member does
-   not require chasing their token.
+   refuses the next publish at once and beats token validity: stopping a
+   family member's commands does not require chasing their token. (Reads are
+   different: an open subscription survives the `deny`; see "What a
+   revocation stops" above.)
 4. Cleanup: drill user removed entirely, token file deleted, user list
    verified clean; publish attempt afterwards → **401**.
 
-Standing revocation procedure for a real family member: apply `deny`
-on their member topic (and the ack topic) first (instant stop), then revoke their tokens /
-remove the user at leisure. Test-plan F1 is satisfied for the ACL
-mechanism; it will be re-run with the real family credentials during
-Phase 4 provisioning.
+Standing revocation procedure for a real family member: apply `deny` on
+their member topic and on the ack topic first (their commands stop at once),
+restart the ntfy server if they may hold an open subscription to the ack
+topic, then revoke their tokens / remove the user at leisure. Test-plan F1
+is satisfied for the ACL mechanism's refusal of publishes; it will be re-run
+with the real family credentials, with the ack-read checks TEST-PLAN F1 now
+lists, during Phase 4 provisioning.
 
 ## F2 phone-credential scope (2026-11-11, PASSED via the public path)
 
