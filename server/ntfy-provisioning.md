@@ -33,20 +33,25 @@ admin: the admin role ignores grants, so an admin publisher could read the
 owner topic (the second check below would catch it).
 
 One `owner-pub` can serve several phones: it then holds these two grants on
-each phone's owner and ack topics and no others, and revoking it cuts off the
-owner channel on all of them.
+each phone's owner and ack topics and no others, and revoking its token cuts
+off the owner channel on all of them. To cut off one phone only, deny it that
+phone's owner topic (`ntfy access owner-pub mab-<device>-owner deny`, or
+`--reset`): the ACL denial is immediate (F1 below), and the token keeps working
+for the other phones.
 
-How the reference deployment got there:
+How the reference deployment got there (it has two provisioned phones; only
+`pilot-phone`'s topics are written up here):
 - **2026-11-11:** the publisher was an existing ntfy user that held other
   grants too, with the grants above added to it.
-- **2026-11-14:** after an audit, each phone's owner channel got its own
-  dedicated publisher user.
-- **2026-11-17:** those were replaced by one dedicated, non-admin `owner-pub`
-  for every phone. The per-phone publisher users now hold no grants, and the
-  existing user lost all its bridge entries (its ack-topic reads and explicit
-  no-access entries on the owner topics); it holds only grants unrelated to
-  the bridge. No wildcard grant was used at
-  any step.
+- **2026-11-14:** after an audit, each phone's owner topic got its own
+  dedicated user for publishing (owner-topic write). The existing user kept
+  the ack-topic reads, with explicit no-access entries on the owner topics.
+- **2026-11-17:** one dedicated, non-admin `owner-pub` replaced them for both
+  phones and took over the ack-topic reads. The per-phone publishing users
+  still exist but hold no grants (their tokens get 403, not the 401 of a
+  removed user). The existing user lost all its bridge entries and holds
+  only grants unrelated to the bridge. No wildcard grant was used at any
+  step.
 
 ## Verification (2026-11-11, all as expected)
 
@@ -59,10 +64,9 @@ How the reference deployment got there:
 - phone user reads family topic → 200; reads a topic it has no grant on → 403
 - publisher token reads ack topic → receives `ok launch meet`
 
-Re-checked on 2026-11-17 with the dedicated `owner-pub` token, on every
-phone's topics: publish to the owner topic → 200, stored; read the owner
-topic → 403; read the ack topic → works. The replaced per-phone publisher
-tokens now get 403 on publish.
+Re-checked on 2026-11-17 with the dedicated `owner-pub` token: publish to an
+owner topic → 200, stored; read an owner topic → 403; read an ack topic →
+works. The replaced per-phone publishing tokens now get 403 on publish.
 
 ## Family members (protocol 0.5)
 
