@@ -154,17 +154,11 @@ Rules:
   these grants: a publisher that shares a user with other grants exposes
   them too, and revoking it cuts those off as well
   (`server/ntfy-provisioning.md` recommends a dedicated user).
-- Revocation acts on the ntfy user, not on one credential: delete the user
-  (which cuts it off on every phone) or `deny` it on topics. Rotating its
-  token or changing its password is not enough, because any credential can
-  mint more tokens. Other publishers are unaffected. To cut off one phone
-  only, `deny` the user on that phone's topics: for an owner publisher, the
-  owner topic and the ack topic; for a family member, their topic and the
-  ack topic (and, to take them off that phone for good, remove the member
-  there first: `server/ntfy-provisioning.md`, "Removing a member"). A
-  leaked credential needs that `deny` on every phone the user publishes
-  to, or the user deleted, and then a server restart, since an open
-  subscription outlasts both. The full list of what each move stops is in
+- Revocation acts on the ntfy user, not on one credential. A leaked
+  credential means deleting the user (it cuts every phone off; other
+  publishers are unaffected) and restarting the server. Cutting a trusted
+  user off one phone means a `deny` on that phone's topics. How, and why a
+  token rotation or password change isn't enough:
   `server/ntfy-provisioning.md`, "What a revocation stops, and when".
 - Credentials live with the publishers (agent secret storage, family
   members' password managers). The phone's owner never handles, sees, or

@@ -48,16 +48,22 @@ not to one credential:
 - **`ntfy access <user> <topic> deny`** (or `--reset`) refuses that user on
   that topic, for every credential it has: its password, its tokens, and any
   token minted from them. The next publish gets 403 (F1 below), and so does
-  the next read or new subscription.
+  the next read or new subscription. Its tokens stay valid, though: they can
+  still mint more, and any later grant to the user (helping a new phone, say)
+  works for them again. So a `deny` is for cutting a trusted user off one
+  phone; for a leaked credential, delete the user.
 - **`ntfy user del <user>`** removes its password, every token (minted ones
   included) and its grants at once: the next request gets 401. To restore
-  access, re-create the user (`ntfy user add`), its grants and a new token.
+  access, re-create the user (`ntfy user add`), its grants and a new token;
+  the old tokens don't come back. This is the move for a leaked credential.
 - **Removing a token or changing the password is not a revocation.** Any
   credential of the user can mint more tokens (`POST /v1/account/token`,
-  never-expiring if asked), and a token minted before the removal keeps
-  working: one minted from a leaked token still published (200) after that
-  token was removed and the password changed. Do these only after one of the
-  two moves above.
+  never-expiring if asked, and a minted token can mint again), and a token
+  minted before the removal keeps working: one minted from a leaked token
+  still published (200) after that token was removed and the password
+  changed. `ntfy token list <user>` shows a user's tokens, but whoever
+  minted one chose its label, and the list prints labels raw: read it as
+  untrusted data, not as a complete picture, and act on the user.
 - **None of these cuts a subscription that is already open.** It keeps
   receiving that topic (here, the phone's receipts on the ack topic) until it
   disconnects, and its holder can keep it open indefinitely. To end it at
@@ -81,7 +87,9 @@ How the reference deployment got there (it has two provisioned phones; only
 - **2026-11-17:** one dedicated, non-admin `owner-pub` replaced them for both
   phones and took over the ack-topic reads. The per-phone publishing users
   still exist but hold no grants (their tokens get 403, not the 401 of a
-  removed user). The existing user lost all its bridge entries and holds
+  removed user). A later grant would bring their tokens back, so they must
+  not be granted again; deleting them (`ntfy user del`) is the clean end.
+  The existing user lost all its bridge entries and holds
   only grants unrelated to the bridge. No wildcard grant was used at any
   step.
 
@@ -182,11 +190,11 @@ members' topics and the owner channel still work after the `deny`:
 Standing revocation procedure for a real family member. Their ntfy user is
 shared across every phone they help, so a `deny` on one phone's topics
 leaves the others open.
-- **Leaked credential:** deny the user on every member topic and ack topic it
-  holds, on every phone (`ntfy access <user>` lists them), or delete the user
-  (`ntfy user del`) and re-create it for the phones they still help; then
-  restart the ntfy server. Removing their token or changing their password
-  isn't enough. "What a revocation stops" above says why.
+- **Leaked credential:** delete the user (`ntfy user del`), restart the ntfy
+  server, then re-create the user with a new credential and the grants for
+  the phones they still help. A `deny` on every phone stops their commands
+  at once, as a stopgap until then, but isn't enough on its own. "What a
+  revocation stops" above says why.
 - **Removing them from one phone only:** follow "Removing a member" above
   for that phone, and keep the user for the others.
 
