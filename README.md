@@ -58,24 +58,34 @@ and there is no release.
 
 ## Acknowledgments
 
-This project is designed and run by [Chris Means](https://github.com/cmeans),
-and built with AI agents, each in a fixed role:
+This project is being built with a **Spec-First Coding** approach: a
+human-AI collaboration model where design comes before implementation, and
+the specs are the contract between the two.
 
-- **Developer:** a [Claude Code](https://claude.com/claude-code) session
-  writes the design documents, the protocol, the executors and their tests,
-  working from the maintainer's decisions.
-- **QA:** a separate Claude Code session reviews every pull request on its
-  own, from the diff and the code, and sends findings back as review rounds.
-  Before each push, the developer also runs a fresh review agent built from
-  QA's past findings.
-- **Muse**, the agent the bridge is built for, runs the self-hosted ntfy
-  server's users and access rules, and reviews changes from the side of the
-  agent that will use them.
+Unlike vibe coding, where you describe what you want and let the AI generate
+code on the fly, spec-first coding treats design as its own, deliberate phase.
+`ARCHITECTURE.md`, `PROTOCOL.md` and `TEST-PLAN.md` came first, worked out in
+conversation: trade-offs explored, alternatives rejected, decisions written
+down with their reasons. `TEST-PLAN.md` turns every assumption in the design
+into a test with a pass bar, and nothing reaches a real user's phone until the
+relevant tests have recorded results.
 
-Nothing merges without the maintainer's sign-off. The agents share project
-state through [mcp-awareness](https://github.com/cmeans/mcp-awareness) and
-hand work to each other by message. What the app does on a phone is tested on
-a dedicated test phone before it reaches anyone else's.
+Testing on a real phone found what the specs couldn't anticipate. The ntfy
+app delivers cached messages when a phone reconnects, which made the
+protocol's 120-second freshness limit and deduplication essential rather than
+a precaution. Tasker's setup steps proved workable for a helper but wrong for
+a phone its owner never has to touch, which is why a native app replaced the
+Tasker pilot. Those findings are recorded in `PROTOCOL.md` and
+`tasker/RESEARCH.md`.
+
+The work is split into roles. [Chris Means](https://github.com/cmeans) designs
+the project, makes the decisions and signs off on every merge. A
+[Claude Code](https://claude.com/claude-code) Developer session writes the
+specs, the executors and their tests; a separate Claude Code QA session
+reviews every pull request on its own; and Muse, the agent the bridge is built
+for, runs the ntfy server's users and access rules and reviews changes from
+the side of the agent that will use them. The agents share project state
+through [mcp-awareness](https://github.com/cmeans/mcp-awareness).
 
 ## License
 
