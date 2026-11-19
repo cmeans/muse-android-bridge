@@ -39,49 +39,22 @@ Two help paths share one phone deployment:
   bar for each. Nothing reaches the first real user's phone until the
   relevant items have recorded results.
 
-Specs, scoping docs and implementation plans are kept in a separate
-repository, not here (maintainer, 2026-11-14). The contracts above stay with
-the code.
+## Layout
 
-## Layout (to be built)
-
-- `tasker/` — the pilot executor: an importable Tasker project implementing
-  the protocol.
-- `app/` — the native Android executor that replaces Tasker at parity.
-- `controller/` — the per-operator controller stack (virtual display +
-  RustDesk client + screenshot/input shim).
-- `server/` — provisioning notes/config for the RustDesk server (hbbs/hbbr)
-  and the ntfy topic/user ACLs.
+- `app/android/` — the native Android app: the bridge that runs on the
+  phone.
+- `tasker/` — an earlier Tasker executor, kept as research. It validated
+  the wire protocol; the app replaces it.
+- `server/` — provisioning notes for the ntfy topics and user ACLs.
+- `controller/` — the per-operator controller stack (virtual display,
+  RustDesk client, screenshot and input shim). Not built yet.
 
 ## Status
 
-Phase 1 in progress (2026-11-11). Design documents complete; the pilot
-device's ntfy principals are provisioned and verified on the self-hosted
-server. Security drill F2 (phone credential scope) has passed, and F1's
-ACL-refusal part (publisher revocation); F1's full revocation drill, by
-deleting the user, is pending for Phase 4 — see `server/ntfy-provisioning.md`.
-The Tasker pilot validated the wire protocol end to end on the pilot
-phone (test group A1 confirmed live).
-
-**Decision (maintainer, 2026-11-11 22:38 CT, superseding the same-day
-"Tasker first, app in parallel" plan): go the native app route NOW.**
-Rationale: the Tasker setup experience — imports, project management,
-per-version XML dialects — is helper-tolerable but wrong-shaped for a
-frozen, never-touched family deployment; the app (store/sideload
-install, one purpose; a store install updates itself, a sideloaded
-build doesn't) is the right surface for the owner.
-Tasker work freezes as validated research: PROTOCOL.md is
-executor-agnostic, so every finding (topics, ACLs, TTL/dedup,
-cached-replay behavior, registry, STOP semantics) carries over
-unchanged. Next: native Android app v1 — own ntfy subscription,
-registry launch, announce, ack, STOP UI — tested on the pilot phone
-first, same rollout order (pilot phone → helper's phone → owner's
-phone). The maintainer handed implementation to the developer on
-2026-11-12; the map, current scaffold status, open
-decisions, and acceptance boundary are in `app/DEV-HANDOFF.md`. The
-app under `app/android/` builds (since 2026-11-12) and has passed its
-first device tests on the pilot phone; it isn't ready for family
-phones yet.
+Early development. The design documents are written, and the wire protocol
+has been validated end to end on a test phone. The Android app builds and has
+passed its first device tests, but it isn't ready for anyone to install yet,
+and there is no release.
 
 ## License
 
