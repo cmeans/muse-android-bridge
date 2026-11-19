@@ -5,9 +5,8 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Android 10+ (API 29)](https://img.shields.io/badge/Android-10%2B%20(API%2029)-3DDC84?logo=android&logoColor=white)
 
-> **Status: work in progress.** Not ready for use on anyone's phone yet:
-> there is no release, and the design is still being tested (see
-> [Status](#status) and `TEST-PLAN.md`).
+> **Status: work in progress.** Not ready for use on anyone's phone yet
+> (see [Status](#status)).
 
 A whitelisted app-launch bridge and remote-fix architecture for a Muse-paired
 Android phone.
@@ -42,12 +41,13 @@ Two help paths share one phone deployment:
 ## Layout
 
 - `app/android/` — the native Android app: the bridge that runs on the
-  phone.
+  phone. Its implementation notes are in `app/DEV-HANDOFF.md`.
 - `tasker/` — an earlier Tasker executor, kept as research. It validated
   the wire protocol; the app replaces it.
 - `server/` — provisioning notes for the ntfy topics and user ACLs.
 - `controller/` — the per-operator controller stack (virtual display,
   RustDesk client, screenshot and input shim). Not built yet.
+- `tests/` — tests for the repository's own CI workflows.
 
 ## Status
 
@@ -64,28 +64,30 @@ the specs are the contract between the two.
 
 Unlike vibe coding, where you describe what you want and let the AI generate
 code on the fly, spec-first coding treats design as its own, deliberate phase.
-`ARCHITECTURE.md`, `PROTOCOL.md` and `TEST-PLAN.md` came first, worked out in
-conversation: trade-offs explored, alternatives rejected, decisions written
-down with their reasons. `TEST-PLAN.md` turns every assumption in the design
-into a test with a pass bar, and nothing reaches a real user's phone until the
-relevant tests have recorded results.
+`ARCHITECTURE.md`, `PROTOCOL.md` and `TEST-PLAN.md` were worked out by the
+maintainer in conversation before any code was written: trade-offs explored,
+alternatives rejected, decisions written down with their reasons.
+`TEST-PLAN.md` turns every assumption in the design into a test with a pass
+bar.
 
-Testing on a real phone found what the specs couldn't anticipate. The ntfy
-app delivers cached messages when a phone reconnects, which made the
-protocol's 120-second freshness limit and deduplication essential rather than
-a precaution. Tasker's setup steps proved workable for a helper but wrong for
-a phone its owner never has to touch, which is why a native app replaced the
-Tasker pilot. Those findings are recorded in `PROTOCOL.md` and
-`tasker/RESEARCH.md`.
+Running the Tasker pilot on a real phone tested the design. It confirmed one
+assumption: the ntfy app delivered cached messages as soon as it subscribed,
+so the protocol's 120-second freshness limit and deduplication are
+load-bearing, not decorative (`tasker/RESEARCH.md`). It also showed something
+the design hadn't settled: Tasker's setup was workable for a helper but wrong
+for a phone its owner should never have to reconfigure, so a native app
+replaced the pilot (`tasker/EXECUTOR.md`).
 
 The work is split into roles. [Chris Means](https://github.com/cmeans) designs
-the project, makes the decisions and signs off on every merge. A
-[Claude Code](https://claude.com/claude-code) Developer session writes the
-specs, the executors and their tests; a separate Claude Code QA session
-reviews every pull request on its own; and Muse, the agent the bridge is built
-for, runs the ntfy server's users and access rules and reviews changes from
-the side of the agent that will use them. The agents share project state
-through [mcp-awareness](https://github.com/cmeans/mcp-awareness).
+the project, makes the decisions and approves every merge. Since
+implementation began, a [Claude Code](https://claude.com/claude-code)
+Developer session keeps the specs current and writes the app and its tests; a
+separate Claude Code QA session reviews every pull request on its own; and
+the maintainer's own Muse (the AI assistant the bridge is built for) manages
+the ntfy server's users and access rules, and reviews each change from the
+side of the assistant that will use it, with its approval required to merge.
+The agents share project state through
+[mcp-awareness](https://github.com/cmeans/mcp-awareness).
 
 ## License
 
