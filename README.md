@@ -82,10 +82,10 @@ The work is split into roles. [Chris Means](https://github.com/cmeans) designs
 the project, makes the decisions and approves every merge. Since the
 maintainer handed implementation over, after writing the app's first
 scaffold, a [Claude Code](https://claude.com/claude-code) Developer session
-keeps the specs current and writes the app and its tests; a separate Claude
-Code QA session reviews every pull request on its own; and the maintainer's
+keeps the specs current and writes the app and its tests. A separate Claude
+Code QA session reviews every pull request on its own, and the maintainer's
 own Muse (the AI assistant the bridge is built for) manages the ntfy server's
-users and access rules, and reviews each pull request from the side of the
+users and access rules and reviews each pull request from the side of the
 assistant that will use it, with its approval required to merge.
 The agents share project state through
 [mcp-awareness](https://github.com/cmeans/mcp-awareness).
