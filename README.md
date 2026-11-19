@@ -1,5 +1,14 @@
 # muse-android-bridge
 
+[![Project Status: WIP](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
+[![CI](https://github.com/cmeans/muse-android-bridge/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cmeans/muse-android-bridge/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+![Android 10+ (API 29)](https://img.shields.io/badge/Android-10%2B%20(API%2029)-3DDC84?logo=android&logoColor=white)
+
+> **Status: work in progress.** Not ready for use on anyone's phone yet:
+> there is no release, and the design is still being tested (see
+> [Status](#status) and `TEST-PLAN.md`).
+
 A whitelisted app-launch bridge and remote-fix architecture for a Muse-paired
 Android phone.
 
