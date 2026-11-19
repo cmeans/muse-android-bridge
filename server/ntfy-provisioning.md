@@ -85,13 +85,17 @@ How the reference deployment got there (it has two provisioned phones; only
   dedicated user for publishing (owner-topic write). The existing user kept
   the ack-topic reads, with explicit no-access entries on the owner topics.
 - **2026-11-17:** one dedicated, non-admin `owner-pub` replaced them for both
-  phones and took over the ack-topic reads. The per-phone publishing users
-  still exist but hold no grants (their tokens get 403, not the 401 of a
-  removed user). A later grant would bring their tokens back, so they must
-  not be granted again; deleting them (`ntfy user del`) is the clean end.
-  The existing user lost all its bridge entries and holds
-  only grants unrelated to the bridge. No wildcard grant was used at any
-  step.
+  phones and took over the ack-topic reads. The existing user lost all its
+  bridge entries and holds only grants unrelated to the bridge. The
+  per-phone publishing users were left with no grants (their tokens got 403,
+  not the 401 of a removed user).
+- **2026-11-19:** both per-phone publishing users were deleted
+  (`ntfy user del`), which removed their tokens too, so no later grant can
+  bring them back. The user list afterwards shows them gone and `owner-pub`
+  with its four grants (write-only on both phones' owner topics, read-only on
+  both ack topics).
+
+No wildcard grant was used at any step.
 
 ## Verification (2026-11-11, all as expected)
 
@@ -106,7 +110,11 @@ How the reference deployment got there (it has two provisioned phones; only
 
 Re-checked on 2026-11-17 with the dedicated `owner-pub` token: publish to an
 owner topic → 200, stored; read an owner topic → 403; read an ack topic →
-works. The replaced per-phone publishing tokens now get 403 on publish.
+works. The replaced per-phone publishing tokens then got 403 on publish.
+
+Re-checked on 2026-11-19, after the per-phone publishing users were deleted,
+with the `owner-pub` token: publish to an owner topic → 200; read an ack
+topic → 200; read an owner topic → 403.
 
 ## Family members (protocol 0.5)
 
