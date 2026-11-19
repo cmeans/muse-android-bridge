@@ -56,6 +56,27 @@ has been validated end to end on a test phone. The Android app builds and has
 passed its first device tests, but it isn't ready for anyone to install yet,
 and there is no release.
 
+## Acknowledgments
+
+This project is designed and run by [Chris Means](https://github.com/cmeans),
+and built with AI agents, each in a fixed role:
+
+- **Developer:** a [Claude Code](https://claude.com/claude-code) session
+  writes the design documents, the protocol, the executors and their tests,
+  working from the maintainer's decisions.
+- **QA:** a separate Claude Code session reviews every pull request on its
+  own, from the diff and the code, and sends findings back as review rounds.
+  Before each push, the developer also runs a fresh review agent built from
+  QA's past findings.
+- **Muse**, the agent the bridge is built for, runs the self-hosted ntfy
+  server's users and access rules, and reviews changes from the side of the
+  agent that will use them.
+
+Nothing merges without the maintainer's sign-off. The agents share project
+state through [mcp-awareness](https://github.com/cmeans/mcp-awareness) and
+hand work to each other by message. What the app does on a phone is tested on
+a dedicated test phone before it reaches anyone else's.
+
 ## License
 
 Apache License 2.0: see [LICENSE](LICENSE).
